@@ -1,0 +1,8 @@
+node_modules
+android
+ios
+dist
+.buildlogs
+reel_extract
+screenshots
+.pods-home
