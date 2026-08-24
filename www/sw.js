@@ -1,6 +1,11 @@
 /* Service Worker：离线缓存 + stale-while-revalidate（先回缓存，后台更新，保证发版后能拿到新版） */
-const CACHE = "sixthings-v2";
-const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
+const CACHE = "sixthings-v3";
+const ASSETS = [
+  "./", "./index.html", "./styles.css", "./app.js", "./sync.js",
+  "./manifest.webmanifest",
+  "./vendor/supabase.umd.js", "./vendor/qrcode.min.js", "./vendor/jsqr.js",
+  "./icons/icon-192.png", "./icons/icon-512.png"
+];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

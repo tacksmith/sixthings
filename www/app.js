@@ -807,7 +807,7 @@ function handle(act, id, btn) {
       if (wrap.style.display === "none") {
         const sc = Sync.syncStartScanner(video, (code) => {
           // 识别到二维码（内容=配对码）
-          if (code && /^[A-Z2-9]{8}$/.test(code)) {
+          if (code && /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code)) {
             wrap.style.display = "none";
             Sync.syncJoinPairing(code).then(r => {
               if (r.ok) { toast("扫码配对成功，开始实时同步"); renderSettings(); }
@@ -826,7 +826,7 @@ function handle(act, id, btn) {
       if (typeof Sync === "undefined" || !Sync.enabled) { toast("同步未配置：需先配置 Supabase"); break; }
       const inp = el("sync-code-input");
       const code = inp ? inp.value.trim() : "";
-      if (!/^\d{6}$/.test(code)) { toast("请输入 6 位配对码"); break; }
+      if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code)) { toast("请输入 8 位配对码"); break; }
       Sync.syncJoinPairing(code).then(r => {
         if (r.ok) { toast("配对成功，开始实时同步"); renderSettings(); }
         else { toast("加入失败：" + (r.reason || "未知")); }

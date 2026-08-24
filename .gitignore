@@ -11,6 +11,7 @@ android/capacitor-cordova-android-plugins/
 android/**/*.iml
 android/.idea/
 *.keystore
+keystore.properties
 !android/app/debug.keystore
 
 .pods-home/
