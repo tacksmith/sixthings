@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>六件事 · Six Things</title>
+  <meta name="description" content="价值 25000 美金的 Ivy Lee 法：睡前列 6 件事，白天按顺序只做第一件。" />
+  <meta name="theme-color" content="#ff5a3c" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="六件事" />
+  <link rel="stylesheet" href="styles.css?v=20260824k" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="topbar-inner">
+        <div id="brand">
+          <span class="brand-mark">6</span>
+          <span class="brand-name">六件事</span>
+        </div>
+        <div id="top-date" class="top-date"></div>
+      </div>
+    </header>
+
+    <main id="screen"></main>
+
+    <nav id="tabbar">
+      <button class="tab" data-tab="today"><span class="tab-icon">▶</span><span class="tab-label">今日</span></button>
+      <button class="tab" data-tab="plan"><span class="tab-icon">✎</span><span class="tab-label">规划</span></button>
+      <button class="tab" data-tab="history"><span class="tab-icon">🔥</span><span class="tab-label">坚持</span></button>
+      <button class="tab" data-tab="settings"><span class="tab-icon">⚙</span><span class="tab-label">设置</span></button>
+    </nav>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script src="vendor/qrcode.min.js"></script>
+  <script src="vendor/jsqr.js"></script>
+  <script src="vendor/supabase.umd.js"></script>
+  <script src="sync.js?v=20260824k"></script>
+  <script src="app.js?v=20260824k"></script>
+</body>
+</html>

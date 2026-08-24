@@ -1,0 +1,21 @@
+{
+  "name": "sixthings",
+  "version": "1.0.0",
+  "description": "六件事 · Six Things — Ivy Lee 法待办 APP",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync",
+    "android:open": "cap open android",
+    "ios:open": "cap open ios",
+    "android:build": "cd android && ./gradlew assembleDebug",
+    "serve": "python3 -m http.server 8080 --directory www"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

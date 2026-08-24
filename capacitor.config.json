@@ -1,0 +1,16 @@
+{
+  "appId": "com.sixthings.app",
+  "appName": "六件事",
+  "webDir": "www",
+  "backgroundColor": "#faf7f2",
+  "android": {
+    "backgroundColor": "#faf7f2",
+    "allowMixedContent": false
+  },
+  "ios": {
+    "backgroundColor": "#faf7f2"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

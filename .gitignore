@@ -1,0 +1,52 @@
+# ---- 依赖 ----
+node_modules/
+
+# ---- Android 构建产物 / Gradle 缓存 ----
+android/.gradle/
+android/.gradle-home/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/
+android/**/*.iml
+android/.idea/
+*.keystore
+!android/app/debug.keystore
+
+.pods-home/
+
+# ---- 素材/中间产物 ----
+reel_extract/
+
+# ---- iOS ----
+ios/App/App/public/
+ios/App/Pods/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/**/xcuserdata/
+ios/build/
+DerivedData/
+*.xcuserstate
+
+# ---- Capacitor ----
+capacitor-cordova-android-plugins/
+*.map
+
+# ---- 构建/日志 ----
+dist/
+.buildlogs/
+screenshots/
+*.log
+
+# ---- 系统/编辑器 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ---- 环境/密钥 ----
+.env
+.env.local
+*.pem
+secrets/

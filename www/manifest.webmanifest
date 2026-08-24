@@ -1,0 +1,17 @@
+{
+  "name": "六件事 · Six Things",
+  "short_name": "六件事",
+  "description": "价值 25000 美金的 Ivy Lee 法：睡前列 6 件事，白天按顺序只做第一件。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf7f2",
+  "theme_color": "#ff5a3c",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
