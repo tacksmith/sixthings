@@ -51,3 +51,6 @@ Thumbs.db
 .env.local
 *.pem
 secrets/
+
+# Cloudflare 部署脚本（含 API key，勿提交）
+deploy-cf.sh
