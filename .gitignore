@@ -54,3 +54,6 @@ secrets/
 
 # Cloudflare 部署脚本（含 API key，勿提交）
 deploy-cf.sh
+
+# 发布脚本（部署凭据细节，不提交）
+release.sh

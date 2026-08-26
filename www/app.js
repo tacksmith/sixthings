@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260824o";
+const APP_VERSION = "20260824q";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
