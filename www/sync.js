@@ -211,8 +211,8 @@ async function _doPush() {
   try {
     const data = Sync.onGetData(); // app.js 提供当前状态
     if (!data) return false;
-    // 防回环：数据与最近一次推送一致（无本地新改动）→ 不重复推送
-    const curSig = JSON.stringify(data);
+    // 业务指纹（与 syncApplyRemote 一致，防回环）：不含元数据
+    const curSig = JSON.stringify({ days: data.days, plan: data.plan, inbox: data.inbox, settings: data.settings });
     if (Sync._lastPushedSig === curSig) return true; // 没变化，跳过推送（避免回声）
     Sync._lastPushedSig = curSig;
     // 用缓存的成员 uid（配对时已获取），避免每次推送都查库
@@ -285,7 +285,7 @@ function syncConfigure(url, anonKey) {
 }
 
 // 启动时尝试从持久化配置自动连接
-function syncAutoInit() {
+async function syncAutoInit() {
   let savedCode = null;
   try {
     const saved = localStorage.getItem("sixthings:sync");
@@ -295,10 +295,10 @@ function syncAutoInit() {
       if (c.pairCode) savedCode = c.pairCode; // 恢复上次配对
     }
   } catch (e) {}
-  const ok = syncInit();
+  const ok = await syncInit();
   if (ok && savedCode && !Sync.paired) {
     // 刷新后：自动重新加入上次的房间
-    syncStartRoom(savedCode);
+    await syncStartRoom(savedCode);
   }
   return ok;
 }

@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260824s";
+const APP_VERSION = "20260824u";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -951,24 +951,21 @@ function syncApplyRemote(payload) {
     if (!payload || !payload.data) return;
     const remote = JSON.parse(payload.data);
     if (!remote || typeof remote !== "object") return;
-    // 去重 + 防回环：同一设备同一份数据（相同指纹）不重复处理
-    if (typeof Sync !== "undefined" && Sync._lastApplied) {
-      const sig = (payload.updatedAt || "") + "|" + JSON.stringify(remote);
-      if (Sync._lastApplied.device === payload.from && Sync._lastApplied.sig === sig) {
-        // 已处理过这份数据（轮询/realtime 重复拉取或对方 echo），忽略
-        return;
-      }
-      Sync._lastApplied = { device: payload.from, sig };
-    } else if (typeof Sync !== "undefined") {
-      const sig = (payload.updatedAt || "") + "|" + JSON.stringify(remote);
-      Sync._lastApplied = { device: payload.from, sig };
+    // 业务数据指纹（不含 lastSyncAt 等元数据）：days/plan/inbox/settings 内容
+    const bizSig = (o) => JSON.stringify({ days: o.days, plan: o.plan, inbox: o.inbox, settings: o.settings });
+    const remoteSig = bizSig(remote);
+    const localSig = bizSig(S);
+    // 去重：内容无实际变化 → 不处理（不 toast、不 save、不 render）
+    if (remoteSig === localSig) {
+      // 但若时间戳更新（对方 echo），仅轻量更新 lastSyncAt，不打扰
+      const incomingAt = new Date(payload.updatedAt || 0).getTime();
+      if (incomingAt > (S.lastSyncAt || 0)) S.lastSyncAt = incomingAt;
+      return;
     }
     // 冲突处理：最后写入者胜（用 updatedAt 比较）
     const incomingAt = new Date(payload.updatedAt || 0).getTime();
     const localAt = S.lastSyncAt || 0;
     if (incomingAt < localAt) return; // 更旧的数据，忽略
-    // 计算合并前的本机快照，用于判断是否真变化
-    const before = JSON.stringify(S);
     // 合并：days 按天合并（远端优先），plan/inbox/settings 直接取远端
     for (const k in (remote.days || {})) {
       if (!S.days[k] || (remote.days[k].items || []).length > (S.days[k].items || []).length) {
@@ -979,13 +976,8 @@ function syncApplyRemote(payload) {
     if (Array.isArray(remote.inbox) && remote.inbox.length > 0) S.inbox = remote.inbox;
     if (remote.settings) S.settings = Object.assign(S.settings, remote.settings);
     S.lastSyncAt = incomingAt;
-    const after = JSON.stringify(S);
-    if (before === after) {
-      // 数据没变化（对方写的是相同的状态），不提示不渲染
-      return;
-    }
     // 应用了远端数据：把推送指纹同步为当前数据，避免 save() 触发的回声推送
-    if (typeof Sync !== "undefined") Sync._lastPushedSig = after;
+    if (typeof Sync !== "undefined") Sync._lastPushedSig = bizSig(S);
     save();
     render();
     toast("已同步其他设备的数据");
