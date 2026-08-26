@@ -64,8 +64,8 @@ async function syncInit() {
 // 确保已匿名登录，返回 auth.uid()（失败返回 null）
 async function syncEnsureAuth() {
   try {
-    // 先看本地是否已有会话
-    let sess = Sync.client.auth.getSession();
+    // 先看本地是否已有会话（注意：supabase-js v2 的 getSession 返回 Promise，必须 await）
+    const sess = await Sync.client.auth.getSession();
     if (sess && sess.data && sess.data.session) {
       Sync.uid = sess.data.session.user.id;
       return Sync.uid;
