@@ -83,6 +83,12 @@ async function syncEnsureAuth() {
 // 电脑端：生成新配对码并显示
 async function syncCreatePairing() {
   if (!Sync.enabled) return { ok: false, reason: "not-configured" };
+  // 清理旧配对状态：移除旧房间订阅 + 旧 pairing 监听
+  if (Sync._channel) { try { Sync.client.removeChannel(Sync._channel); } catch (e) {} }
+  Sync._channel = null;
+  Sync._listening = false;
+  Sync._members = null;
+  if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
   const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 去掉易混的 I/O/0/1
   let code = "";
   for (let i = 0; i < 8; i++) code += CHARS[Math.floor(Math.random() * CHARS.length)];
@@ -98,6 +104,14 @@ async function syncCreatePairing() {
     await Sync.client.from("pairings").upsert({
       code, host: devId, host_uid: Sync.uid, status: "waiting", created_at: new Date().toISOString(), expires_at: expAt,
     });
+    // 立即持久化配对码（刷新后自动重连该 room，即使手机还没加入）
+    try {
+      const saved = localStorage.getItem("sixthings:sync");
+      const c = saved ? JSON.parse(saved) : {};
+      c.pairCode = code;
+      c.room = "room-" + code;
+      localStorage.setItem("sixthings:sync", JSON.stringify(c));
+    } catch (e) {}
     // 开始监听 room 的配对状态
     await syncListenPairing(code);
     return { ok: true, code };
@@ -146,6 +160,9 @@ async function syncJoinPairing(code) {
 // 进入同步房间：双方订阅共享数据，上传本机数据
 async function syncStartRoom(code) {
   if (!Sync.enabled || Sync._listening) return;
+  // 清理可能残留的旧订阅（防御：确保不重复订阅）
+  if (Sync._channel) { try { Sync.client.removeChannel(Sync._channel); } catch (e) {} }
+  if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
   Sync._listening = true;
   Sync.room = "room-" + code;
   // 0) 缓存房间成员 uid（只查一次，推送时不再查库）
