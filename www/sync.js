@@ -24,6 +24,9 @@ const Sync = {
   lastPushed: 0,         // 最近一次上传时间戳
   _channel: null,        // realtime channel
   _listening: false,     // 是否在监听远端
+  _members: null,        // 房间成员 uid 缓存 {host_uid, guest_uid}（配对时获取，推送不再查库）
+  _pollTimer: null,      // 轮询兜底定时器（realtime 断连时也能同步）
+  _pushTimer: null,      // 推送防抖定时器（连续改动合并为一次推送）
   onData: null,          // 收到远端数据回调（由 app.js 设置）
 };
 
@@ -143,6 +146,8 @@ async function syncStartRoom(code) {
   if (!Sync.enabled || Sync._listening) return;
   Sync._listening = true;
   Sync.room = "room-" + code;
+  // 0) 缓存房间成员 uid（只查一次，推送时不再查库）
+  await syncLoadMembers(code);
   // 1) 监听云端数据变化（Postgres changes on sync_data）
   Sync._channel = Sync.client
     .channel("sync-data-" + code)
@@ -159,24 +164,60 @@ async function syncStartRoom(code) {
   await syncPull();
   // 3) 上传本机数据（通知对方）
   await syncPush();
+  // 4) 轮询兜底：realtime 断连时也能同步（每 8s 拉一次远端）
+  Sync._pollTimer = setInterval(() => { syncPull(); }, 8000);
+}
+
+// 获取房间成员 uid 并缓存（配对后一次，push 直接复用，避免每次查库）
+async function syncLoadMembers(code) {
+  try {
+    const { data, error } = await Sync.client.from("pairings")
+      .select("host_uid, guest_uid")
+      .eq("code", String(code).replace(/^room-/, ""))
+      .single();
+    if (!error && data) {
+      Sync._members = { host_uid: data.host_uid, guest_uid: data.guest_uid };
+    } else if (error && error.code !== "PGRST116") {
+      console.warn("[sync] load members err:", error.message);
+    }
+  } catch (e) { console.warn("[sync] load members:", e.message); }
 }
 
 // 上传本机全量数据到云端（最后写入者胜）
-async function syncPush() {
+// 推送（防抖）：连续改动在 800ms 内合并为一次推送，避免大量并发 upsert
+function syncPush() {
+  if (!Sync.enabled || !Sync.room) return false;
+  if (Sync._pushTimer) clearTimeout(Sync._pushTimer);
+  Sync._pushTimer = setTimeout(() => {
+    Sync._pushTimer = null;
+    _doPush();
+  }, 800);
+  return true;
+}
+
+async function _doPush() {
   if (!Sync.enabled || !Sync.room || !Sync.onGetData) return false;
   try {
     const data = Sync.onGetData(); // app.js 提供当前状态
     if (!data) return false;
-    // 查当前房间成员 uid（RLS 隔离需要）
-    const code = (Sync.room || "").replace(/^room-/, "");
-    const { data: pair } = await Sync.client.from("pairings").select("host_uid, guest_uid").eq("code", code).single();
+    // 用缓存的成员 uid（配对时已获取），避免每次推送都查库
+    let host = Sync._members ? Sync._members.host_uid : Sync.uid;
+    let guest = Sync._members ? Sync._members.guest_uid : Sync.uid;
+    if (!Sync._members) {
+      // 缓存缺失时尽力补一次（如配对早期）
+      try {
+        const code = (Sync.room || "").replace(/^room-/, "");
+        const { data: pair } = await Sync.client.from("pairings").select("host_uid, guest_uid").eq("code", code).single();
+        if (pair) { host = pair.host_uid || Sync.uid; guest = pair.guest_uid || Sync.uid; Sync._members = { host_uid: host, guest_uid: guest }; }
+      } catch (e) {}
+    }
     const payload = {
       room: Sync.room,
       data: JSON.stringify(data),
       updated_at: new Date().toISOString(),
       device: syncDeviceId(),
-      host_uid: pair ? pair.host_uid : Sync.uid,
-      guest_uid: pair ? pair.guest_uid : Sync.uid,
+      host_uid: host,
+      guest_uid: guest,
     };
     Sync.lastPushed = Date.now();
     const { error } = await Sync.client.from("sync_data").upsert(payload, { onConflict: "room" });
@@ -200,11 +241,13 @@ async function syncPull() {
 
 // 解除配对/断开
 async function syncDisconnect() {
+  if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
   try { if (Sync._channel) Sync.client.removeChannel(Sync._channel); } catch (e) {}
   Sync._channel = null;
   Sync._listening = false;
   Sync.paired = false;
   Sync.room = null;
+  Sync._members = null;
 }
 
 /* ---------------- 配置设置（用户填 URL/key 后调用） ---------------- */
