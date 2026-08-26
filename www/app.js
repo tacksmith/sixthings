@@ -6,6 +6,8 @@
 "use strict";
 
 const KEY = "sixthings:v1";
+// 应用版本号（与 index.html 的 ?v= 保持同步）
+const APP_VERSION = "20260824o";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -657,6 +659,7 @@ function renderSettings() {
   html += '</div>';
   html += '<div class="card" style="margin-top:16px"><div class="set-row"><div><div class="set-label">重置所有数据</div><div class="set-desc">清空清单、历史和设置</div></div><button class="btn ghost-btn" style="padding:8px 14px;font-size:13px" data-act="reset">清空</button></div></div>';
   html += '<p class="muted" style="text-align:center;margin-top:18px">六件事 · Six Things — 数据只存在你的设备本地，自动备份 + 可导出文件。</p>';
+  html += '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;opacity:.7">版本 ' + APP_VERSION + '</p>';
 
   screen.innerHTML = html;
   bind(screen);
