@@ -606,3 +606,55 @@ li.dd-done .dd-state { color: var(--accent); }
 li.dd-done .dd-text { color: var(--ink-3); text-decoration: line-through; }
 li.dd-skipped .dd-state { color: var(--ink-3); }
 li.dd-todo .dd-state { color: #b0562a; }
+
+
+/* ============ 手机响应式增强 ============ */
+/* 窄屏手机：字号/间距/防溢出微调，提升触控与阅读体验 */
+
+/* 小屏手机（≤400px） */
+@media (max-width: 400px) {
+  :root { font-size: 15px; }
+
+  /* 卡片内边距略收 */
+  .card { padding: 13px; }
+
+  /* 添加行：输入框可伸缩，按钮不换行 */
+  .add-row { gap: 6px; }
+  .add-row input { min-width: 0; flex: 1; }
+  .add-row button { padding: 14px 14px; }
+
+  /* 设置行：长文字换行，按钮不被挤压 */
+  .set-row { flex-wrap: wrap; gap: 8px; }
+  .set-row > div:first-child { flex: 1; min-width: 0; }
+
+  /* 按钮略紧凑 */
+  .btn { font-size: 15px; padding: 13px 14px; }
+
+  /* 坚持页大数字 */
+  .streak-num { font-size: 40px; }
+
+  /* 配对二维码（app.js 内联 160px）：窄屏缩小防溢出 */
+  #sync-qr { max-width: 140px; height: auto; }
+  #sync-qr canvas { max-width: 100%; height: auto; }
+
+  /* 日历格子更紧凑 */
+  .cal-grid { gap: 3px; }
+  .cal-cell { min-height: 32px; }
+
+  /* 输入框内边距 */
+  input:not([type]), input[type="text"] { padding: 12px 10px; }
+
+  /* 今日页/规划页列表项：防止超长文字挤压操作按钮 */
+  .plan-text, .dd-text, .now-text { min-width: 0; word-break: break-word; }
+  .plan-list li, .dd-row { flex-wrap: nowrap; }
+  .plan-list li > span:first-of-type { flex-shrink: 0; }
+}
+
+/* 超窄屏（≤340px，老安卓） */
+@media (max-width: 340px) {
+  :root { font-size: 14px; }
+  .topbar-inner { padding: 0 10px; }
+  .card { padding: 10px; }
+  .plan-cap { font-size: 12px; }
+  .banner { padding: 10px; }
+}

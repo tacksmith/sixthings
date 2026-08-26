@@ -1,5 +1,5 @@
 /* Service Worker：离线缓存 + stale-while-revalidate（先回缓存，后台更新，保证发版后能拿到新版） */
-const CACHE = "sixthings-v8";
+const CACHE = "sixthings-v9";
 const ASSETS = [
   "./", "./index.html", "./styles.css", "./app.js", "./sync.js",
   "./manifest.webmanifest",

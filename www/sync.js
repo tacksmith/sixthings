@@ -27,6 +27,8 @@ const Sync = {
   _members: null,        // 房间成员 uid 缓存 {host_uid, guest_uid}（配对时获取，推送不再查库）
   _pollTimer: null,      // 轮询兜底定时器（realtime 断连时也能同步）
   _pushTimer: null,      // 推送防抖定时器（连续改动合并为一次推送）
+  _lastApplied: null,    // 最近一次应用过的远端数据指纹 {device, sig}（去重 + 防回环）
+  _lastPushedSig: null,  // 最近一次推送的数据指纹（无本地改动时不重复推，防回环）
   onData: null,          // 收到远端数据回调（由 app.js 设置）
 };
 
@@ -200,6 +202,10 @@ async function _doPush() {
   try {
     const data = Sync.onGetData(); // app.js 提供当前状态
     if (!data) return false;
+    // 防回环：数据与最近一次推送一致（无本地新改动）→ 不重复推送
+    const curSig = JSON.stringify(data);
+    if (Sync._lastPushedSig === curSig) return true; // 没变化，跳过推送（避免回声）
+    Sync._lastPushedSig = curSig;
     // 用缓存的成员 uid（配对时已获取），避免每次推送都查库
     let host = Sync._members ? Sync._members.host_uid : Sync.uid;
     let guest = Sync._members ? Sync._members.guest_uid : Sync.uid;
