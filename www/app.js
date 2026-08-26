@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260824u";
+const APP_VERSION = "20260824v";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -951,10 +951,27 @@ function syncApplyRemote(payload) {
     if (!payload || !payload.data) return;
     const remote = JSON.parse(payload.data);
     if (!remote || typeof remote !== "object") return;
-    // 业务数据指纹（不含 lastSyncAt 等元数据）：days/plan/inbox/settings 内容
-    const bizSig = (o) => JSON.stringify({ days: o.days, plan: o.plan, inbox: o.inbox, settings: o.settings });
-    const remoteSig = bizSig(remote);
-    const localSig = bizSig(S);
+    // 业务数据指纹（不含 lastSyncAt 等元数据）
+    // settings 只取远端拥有的键（Object.assign 会扩展本地 settings，全字段比较永远不等）
+    const bizSig = (o, subsetKeys) => {
+      const pick = {};
+      for (const k of subsetKeys || ["days", "plan", "inbox", "settings"]) pick[k] = o[k];
+      return JSON.stringify(pick);
+    };
+    const remoteKeys = ["days", "plan", "inbox", "settings"].filter(k => remote[k] !== undefined);
+    // 远端视角的本地指纹：days/plan/inbox 取 S 当前值，settings 只取远端拥有的键
+    const localView = {};
+    for (const k of remoteKeys) {
+      if (k === "settings") {
+        const sub = {};
+        for (const sk in remote.settings) if (remote.settings[sk] !== undefined) sub[sk] = (S.settings||{})[sk];
+        localView.settings = sub;
+      } else {
+        localView[k] = S[k];
+      }
+    }
+    const remoteSig = bizSig(remote, remoteKeys);
+    const localSig = bizSig(localView, remoteKeys);
     // 去重：内容无实际变化 → 不处理（不 toast、不 save、不 render）
     if (remoteSig === localSig) {
       // 但若时间戳更新（对方 echo），仅轻量更新 lastSyncAt，不打扰
