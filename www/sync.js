@@ -168,6 +168,15 @@ async function syncStartRoom(code) {
   await syncPush();
   // 4) 轮询兜底：realtime 断连时也能同步（每 8s 拉一次远端）
   Sync._pollTimer = setInterval(() => { syncPull(); }, 8000);
+  // 5) 持久化配对状态（刷新后自动重连）
+  Sync.paired = true;
+  try {
+    const saved = localStorage.getItem("sixthings:sync");
+    const c = saved ? JSON.parse(saved) : {};
+    c.pairCode = String(code).replace(/^room-/, "");
+    c.room = Sync.room;
+    localStorage.setItem("sixthings:sync", JSON.stringify(c));
+  } catch (e) {}
 }
 
 // 获取房间成员 uid 并缓存（配对后一次，push 直接复用，避免每次查库）
@@ -254,6 +263,16 @@ async function syncDisconnect() {
   Sync.paired = false;
   Sync.room = null;
   Sync._members = null;
+  // 清除持久化的配对状态（刷新后不再自动重连）
+  try {
+    const saved = localStorage.getItem("sixthings:sync");
+    if (saved) {
+      const c = JSON.parse(saved);
+      delete c.pairCode;
+      delete c.room;
+      localStorage.setItem("sixthings:sync", JSON.stringify(c));
+    }
+  } catch (e) {}
 }
 
 /* ---------------- 配置设置（用户填 URL/key 后调用） ---------------- */
@@ -267,14 +286,21 @@ function syncConfigure(url, anonKey) {
 
 // 启动时尝试从持久化配置自动连接
 function syncAutoInit() {
+  let savedCode = null;
   try {
     const saved = localStorage.getItem("sixthings:sync");
     if (saved) {
       const c = JSON.parse(saved);
       if (c.url && c.anonKey) { SYNC_CONFIG.url = c.url; SYNC_CONFIG.anonKey = c.anonKey; }
+      if (c.pairCode) savedCode = c.pairCode; // 恢复上次配对
     }
   } catch (e) {}
-  return syncInit();
+  const ok = syncInit();
+  if (ok && savedCode && !Sync.paired) {
+    // 刷新后：自动重新加入上次的房间
+    syncStartRoom(savedCode);
+  }
+  return ok;
 }
 
 /* ---------------- 二维码辅助 ---------------- */
