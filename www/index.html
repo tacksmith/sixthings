@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="六件事" />
-  <link rel="stylesheet" href="styles.css?v=20260825c" />
+  <link rel="stylesheet" href="styles.css?v=20260825d" />
 </head>
 <body>
   <div id="app">
@@ -23,6 +23,10 @@
           <span class="brand-name">六件事</span>
         </div>
         <div id="top-date" class="top-date"></div>
+        <div id="sync-indicator" class="sync-indicator" data-act="goto-settings" title="多端同步状态" style="display:none">
+          <span id="sync-ind-dot" class="sync-ind-dot" style="background:#999"></span>
+          <span id="sync-ind-time" class="sync-ind-time"></span>
+        </div>
       </div>
     </header>
 
@@ -41,7 +45,7 @@
   <script src="vendor/qrcode.min.js"></script>
   <script src="vendor/jsqr.js"></script>
   <script src="vendor/supabase.umd.js"></script>
-  <script src="sync.js?v=20260825c"></script>
-  <script src="app.js?v=20260825c"></script>
+  <script src="sync.js?v=20260825d"></script>
+  <script src="app.js?v=20260825d"></script>
 </body>
 </html>

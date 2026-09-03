@@ -30,7 +30,16 @@ const Sync = {
   _lastApplied: null,    // 最近一次应用过的远端数据指纹 {device, sig}（去重 + 防回环）
   _lastPushedSig: null,  // 最近一次推送的数据指纹（无本地改动时不重复推，防回环）
   onData: null,          // 收到远端数据回调（由 app.js 设置）
+  connState: "off",      // 连接状态: off/connecting/connected/reconnecting（供 UI 显示）
+  lastSyncAt: 0,         // 最近一次成功同步（推或拉）的时间戳
+  onStateChange: null,   // 状态变化回调（app.js 设置，用于更新 UI）
+  _retryTimer: null,     // 断线自动重连定时器
 };
+// 内部更新连接状态并通知 UI
+function syncSetState(st) {
+  Sync.connState = st;
+  try { if (Sync.onStateChange) Sync.onStateChange(st); } catch (e) {}
+}
 
 /* ---------------- 工具 ---------------- */
 function syncUid() { return Math.random().toString(36).slice(2, 10); }
@@ -168,6 +177,7 @@ async function syncJoinPairing(code) {
 // 进入同步房间：双方订阅共享数据，上传本机数据
 async function syncStartRoom(code) {
   if (!Sync.enabled || Sync._listening) return;
+  if (Sync._retryTimer) { clearTimeout(Sync._retryTimer); Sync._retryTimer = null; }
   // 清理可能残留的旧订阅（防御：确保不重复订阅）
   if (Sync._channel) { try { Sync.client.removeChannel(Sync._channel); } catch (e) {} }
   if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
@@ -186,13 +196,27 @@ async function syncStartRoom(code) {
         if (Sync.onData) Sync.onData({ type: "remote-data", data: payload.new.data, updatedAt: payload.new.updated_at, from: payload.new.device });
       }
     })
-    .subscribe();
+    .subscribe((status) => {
+      // realtime 连接状态反馈
+      if (status === "SUBSCRIBED") { syncSetState("connected"); }
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        syncSetState("reconnecting");
+        // 自动重连：重置订阅（realtime 断线后不会自动恢复 postgres_changes）
+        Sync._listening = false;
+        if (Sync._channel) { try { Sync.client.removeChannel(Sync._channel); } catch (e) {} Sync._channel = null; }
+        if (Sync.room && Sync.paired) {
+          const rc = Sync.room.replace(/^room-/, "");
+          Sync._retryTimer = setTimeout(() => { syncStartRoom(rc); }, 1500); // 1.5s 后重连
+        }
+      }
+    });
+  syncSetState("connecting");
   // 2) 拉取云端已有数据（新加入方拿到对方的）
   await syncPull();
   // 3) 上传本机数据（通知对方）
   await syncPush();
   // 4) 轮询兜底：realtime 断连时也能同步（每 8s 拉一次远端）
-  Sync._pollTimer = setInterval(() => { syncPull(); }, 8000);
+  Sync._pollTimer = setInterval(() => { syncPull(); }, 5000);
   // 5) 持久化配对状态（刷新后自动重连）
   Sync.paired = true;
   try {
@@ -232,10 +256,11 @@ async function syncLoadMembers(code) {
 function syncPush() {
   if (!Sync.enabled || !Sync.room) return false;
   if (Sync._pushTimer) clearTimeout(Sync._pushTimer);
+  // 即时推送：本地改动 200ms 内同步到云端，体验接近实时
   Sync._pushTimer = setTimeout(() => {
     Sync._pushTimer = null;
     _doPush();
-  }, 800);
+  }, 200);
   return true;
 }
 
@@ -269,7 +294,9 @@ async function _doPush() {
     };
     Sync.lastPushed = Date.now();
     const { error } = await Sync.client.from("sync_data").upsert(payload, { onConflict: "room" });
-    if (error) { console.warn("[sync] push upsert err:", error.message); return false; }
+    if (error) { console.warn("[sync] push upsert err:", error.message); syncSetState("reconnecting"); return false; }
+    Sync.lastSyncAt = Date.now();
+    if (Sync.connState === "off" || Sync.connState === "reconnecting") syncSetState("connected");
     return true;
   } catch (e) { console.warn("[sync] push err:", e.message); return false; }
 }
@@ -280,6 +307,8 @@ async function syncPull() {
   try {
     const { data } = await Sync.client.from("sync_data").select("*").eq("room", Sync.room).single();
     if (data && data.data && data.device !== syncDeviceId()) {
+      Sync.lastSyncAt = Date.now();
+      if (Sync.connState === "off" || Sync.connState === "reconnecting") syncSetState("connected");
       if (Sync.onData) Sync.onData({ type: "remote-data", data: data.data, updatedAt: data.updated_at, from: data.device });
       return data;
     }
@@ -290,12 +319,14 @@ async function syncPull() {
 // 解除配对/断开
 async function syncDisconnect() {
   if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
+  if (Sync._retryTimer) { clearTimeout(Sync._retryTimer); Sync._retryTimer = null; }
   try { if (Sync._channel) Sync.client.removeChannel(Sync._channel); } catch (e) {}
   Sync._channel = null;
   Sync._listening = false;
   Sync.paired = false;
   Sync.room = null;
   Sync._members = null;
+  syncSetState("off");
   // 清除持久化的配对状态（刷新后不再自动重连）
   try {
     const saved = localStorage.getItem("sixthings:sync");

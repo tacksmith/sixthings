@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260825c";
+const APP_VERSION = "20260825d";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -642,12 +642,17 @@ function renderSettings() {
 
   // 多端同步状态
   const syncOk = typeof Sync !== "undefined" && Sync.enabled;
-  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">多端同步</h2>';
+  html += '<div class="card sync-status-card"><h2 class="sec-title" style="font-size:16px">多端同步</h2>';
   if (!syncOk) {
     html += '<p class="muted" style="font-size:13px;line-height:1.7">尚未配置同步。多端实时同步让电脑/手机随时一致，无需导出导入。<br/>需先配置 Supabase 项目（见文档）。</p>';
     html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" data-act="sync-pair" style="font-size:13px">开始配对</button></div>';
   } else if (Sync.paired) {
-    html += '<p class="muted" style="font-size:13px;line-height:1.7">✅ 已配对房间 <b>' + (Sync.room || "") + '</b>，正在实时同步。<br/>任何设备改动都会自动同步到所有已配对设备。</p>';
+    // 实时连接状态
+    const stMap = { off: ["⚪", "未连接", "#999"], connecting: ["🔄", "连接中…", "#f59e0b"], connected: ["🟢", "已连接·实时同步中", "#22c55e"], reconnecting: ["⚠️", "网络中断·重连中…", "#ef4444"] };
+    const st = stMap[Sync.connState] || stMap.off;
+    const lastTxt = Sync.lastSyncAt ? "最后同步 " + new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "尚未同步";
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="sync-dot" style="width:10px;height:10px;border-radius:50%;background:' + st[2] + ';display:inline-block;box-shadow:0 0 6px ' + st[2] + '"></span><span class="sync-label" style="font-size:13px;font-weight:600;color:' + st[2] + '">' + st[1] + '</span><span class="sync-time muted" style="font-size:11px;margin-left:auto">' + lastTxt + '</span></div>';
+    html += '<p class="muted" style="font-size:13px;line-height:1.7">✅ 已配对房间 <b>' + (Sync.room || "") + '</b><br/>任何设备改动都会自动同步到所有已配对设备。</p>';
     html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn ghost-btn" data-act="sync-disconnect" style="font-size:13px">解除配对</button></div>';
   } else {
     html += '<p class="muted" style="font-size:13px;line-height:1.7">已连接，尚未配对。点「显示配对码」让另一台设备扫码加入。</p>';
@@ -671,6 +676,28 @@ function renderSettings() {
 
   screen.innerHTML = html;
   bind(screen);
+  // 同步状态变化时，仅刷新同步卡片区域（避免整页闪烁）
+  if (typeof Sync !== "undefined") {
+    Sync.onStateChange = (st) => {
+      const card = screen.querySelector(".sync-status-card");
+      if (card) {
+        const stMap = { off: ["⚪", "未连接", "#999"], connecting: ["🔄", "连接中…", "#f59e0b"], connected: ["🟢", "已连接·实时同步中", "#22c55e"], reconnecting: ["⚠️", "网络中断·重连中…", "#ef4444"] };
+        const s = stMap[st] || stMap.off;
+        const lastTxt = Sync.lastSyncAt ? new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "尚未同步";
+        const el2 = card.querySelector(".sync-dot"); if (el2) { el2.style.background = s[2]; el2.style.boxShadow = "0 0 6px " + s[2]; }
+        const el3 = card.querySelector(".sync-label"); if (el3) { el3.textContent = s[1]; el3.style.color = s[2]; }
+        const el4 = card.querySelector(".sync-time"); if (el4) el4.textContent = lastTxt;
+      }
+    };
+    // 定时刷新"最后同步时间"
+    if (!Sync._uiTimer) Sync._uiTimer = setInterval(() => {
+      const card = document.querySelector(".sync-status-card");
+      if (card) {
+        const t = card.querySelector(".sync-time");
+        if (t) t.textContent = Sync.lastSyncAt ? "最后同步 " + new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "尚未同步";
+      }
+    }, 1000);
+  }
   // 导入：文件选择后读取合并
   const fi = el("import-file");
   if (fi) {
@@ -701,6 +728,9 @@ function renderSettings() {
 
 /* ---------------- 事件绑定 ---------------- */
 function bind(root) {
+  // 顶部同步指示器 → 设置页
+  const sind = root.querySelector && root.querySelector("#sync-indicator");
+  if (sind) sind.addEventListener("click", () => { currentTab = "settings"; render(); });
   root.querySelectorAll("[data-act]").forEach(b => {
     b.addEventListener("click", (e) => {
       e.preventDefault();
@@ -1001,28 +1031,83 @@ function syncApplyRemote(payload) {
     const incomingAt = new Date(payload.updatedAt || 0).getTime();
     const localAt = S.lastSyncAt || 0;
     if (incomingAt < localAt) return; // 更旧的数据，忽略
-    // 合并：days 按天合并（远端优先），plan/inbox/settings 直接取远端
+
+    // ===== 字段级智能合并（体验拉满：两端数据都不丢） =====
+    // days：按天合并，同一天 items 按 id 合并（各自保留对方没有的任务）
+    let daysChanged = false;
     for (const k in (remote.days || {})) {
-      if (!S.days[k] || (remote.days[k].items || []).length > (S.days[k].items || []).length) {
-        S.days[k] = remote.days[k];
+      const rd = remote.days[k];
+      const ld = S.days[k];
+      if (!ld) { S.days[k] = JSON.parse(JSON.stringify(rd)); daysChanged = true; continue; }
+      const mergedItems = [];
+      const seen = new Set();
+      for (const it of (ld.items || [])) { if (!seen.has(it.id)) { mergedItems.push(it); seen.add(it.id); } }
+      for (const it of (rd.items || [])) {
+        if (!seen.has(it.id)) { mergedItems.push(it); seen.add(it.id); }
+        else {
+          // 同 id：保留更完整/更新的（有 done 状态差异时按更新顺序，简单取远端）
+          const idx = mergedItems.findIndex(x => x.id === it.id);
+          if (idx >= 0) mergedItems[idx] = it;
+        }
+      }
+      if (mergedItems.length !== (ld.items || []).length) daysChanged = true;
+      S.days[k] = { ...ld, ...rd, items: mergedItems, closed: (ld.closed || rd.closed || false) };
+    }
+    // inbox：合并去重（按 id 和 text 双去重）
+    if (Array.isArray(remote.inbox)) {
+      const seen = new Set();
+      const merged = [];
+      for (const it of (S.inbox || [])) { if (!seen.has(it.id) && !seen.has("t:" + it.text)) { merged.push(it); seen.add(it.id); seen.add("t:" + it.text); } }
+      for (const it of (remote.inbox || [])) { if (!seen.has(it.id) && !seen.has("t:" + it.text)) { merged.push(it); seen.add(it.id); seen.add("t:" + it.text); } }
+      if (JSON.stringify(merged) !== JSON.stringify(S.inbox)) S.inbox = merged;
+    }
+    // plan：本地有内容且远端空 → 保留本地；远端有内容 → 用远端（规划是"即将执行"的，远端为准）
+    if (remote.plan && remote.plan.items && remote.plan.items.length > 0) S.plan = JSON.parse(JSON.stringify(remote.plan));
+    else if (!S.plan || !S.plan.items || S.plan.items.length === 0) S.plan = remote.plan || null;
+    // settings：字段级合并，本地未显式设置的键才取远端
+    if (remote.settings && typeof remote.settings === "object") {
+      const localSet = new Set(Object.keys(S.settings || {}));
+      for (const sk in remote.settings) {
+        if (!localSet.has(sk) || S.settings[sk] === undefined) S.settings[sk] = remote.settings[sk];
       }
     }
-    if (remote.plan) S.plan = remote.plan;
-    if (Array.isArray(remote.inbox) && remote.inbox.length > 0) S.inbox = remote.inbox;
-    if (remote.settings) S.settings = Object.assign(S.settings, remote.settings);
+
     S.lastSyncAt = incomingAt;
     // 应用了远端数据：把推送指纹同步为当前数据，避免 save() 触发的回声推送
     if (typeof Sync !== "undefined") Sync._lastPushedSig = bizSig(S);
     save();
     render();
-    toast("已同步其他设备的数据");
+    // 体验：轻提示"已同步"(仅在有实际内容变化时)
+    if (daysChanged) toast("已同步其他设备的数据");
   } catch (e) { console.warn("[sync] apply err:", e.message); }
 }
-// 注册同步回调（若 sync.js 已加载）
+// 全局同步指示器：顶部小圆点 + 最后同步时间（所有页面可见）
+function updateSyncIndicator() {
+  const ind = el("sync-indicator");
+  if (!ind) return;
+  const paired = typeof Sync !== "undefined" && Sync.paired;
+  const stMap = { off: ["#999", "未连接"], connecting: ["#f59e0b", "连接中"], connected: ["#22c55e", "已同步"], reconnecting: ["#ef4444", "重连中"] };
+  const st = (typeof Sync !== "undefined" && stMap[Sync.connState]) || stMap.off;
+  if (!paired) { ind.style.display = "none"; return; }
+  ind.style.display = "flex";
+  const dot = el("sync-ind-dot"); if (dot) dot.style.background = st[0];
+  const t = el("sync-ind-time");
+  if (t) {
+    if (Sync.connState === "connecting") t.textContent = "连接中";
+    else if (Sync.connState === "reconnecting") t.textContent = "重连中";
+    else if (Sync.lastSyncAt) t.textContent = new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    else t.textContent = "";
+  }
+}
 if (typeof Sync !== "undefined") {
   Sync.onData = (payload) => { if (payload && payload.type === "remote-data") syncApplyRemote(payload); };
   Sync.onGetData = () => S;
+  // 状态变化 → 更新全局指示器
+  const _prevOC = Sync.onStateChange;
+  Sync.onStateChange = (st) => { updateSyncIndicator(); if (_prevOC) _prevOC(st); };
   try { Sync.syncAutoInit(); } catch (e) {}
+  // 每秒刷新指示器时间 + 同步状态
+  setInterval(updateSyncIndicator, 1000);
 }
 
 function boot() {
