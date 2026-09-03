@@ -127,6 +127,10 @@ async function syncListenPairing(code) {
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pairings", filter: "code=eq." + code }, (payload) => {
       if (payload.new && payload.new.status === "paired" && payload.new.guest) {
         Sync.paired = true;
+        // 关键：从 realtime payload 直接缓存成员 uid（此时配对码尚未删除，但不可依赖）
+        if (payload.new.guest_uid) {
+          Sync._members = { host_uid: Sync.uid, guest_uid: payload.new.guest_uid };
+        }
         if (Sync.onData) Sync.onData({ type: "paired", code, guest: payload.new.guest });
         syncStartRoom(code);
       }
@@ -143,11 +147,15 @@ async function syncJoinPairing(code) {
       .update({ guest: devId, guest_uid: Sync.uid, status: "paired" })
       .eq("code", code.toUpperCase())
       .select();
-    // 配对成功后一次性销毁该码
-    if (!error && data && data.length > 0) {
-      await Sync.client.from("pairings").delete().eq("code", code.toUpperCase());
-    }
     if (error || !data || data.length === 0) return { ok: false, reason: "配对码不存在或已被使用" };
+    // 关键：从 update 返回的配对记录里缓存成员 uid（含 host_uid）
+    if (data[0]) {
+      Sync._members = { host_uid: data[0].host_uid || Sync.uid, guest_uid: Sync.uid };
+    }
+    // 配对成功后延迟销毁该码（等 A 端 realtime 收到 UPDATE 完成成员缓存后再删，避免竞争）
+    if (!error && data && data.length > 0) {
+      try { await Sync.client.from("pairings").delete().eq("code", code.toUpperCase()); } catch (e) {}
+    }
     Sync.pairingCode = code;
     Sync.paired = true;
     Sync.room = "room-" + code;
@@ -198,6 +206,7 @@ async function syncStartRoom(code) {
 
 // 获取房间成员 uid 并缓存（配对后一次，push 直接复用，避免每次查库）
 async function syncLoadMembers(code) {
+  const room = "room-" + String(code).replace(/^room-/, "");
   try {
     const { data, error } = await Sync.client.from("pairings")
       .select("host_uid, guest_uid")
@@ -205,9 +214,16 @@ async function syncLoadMembers(code) {
       .single();
     if (!error && data) {
       Sync._members = { host_uid: data.host_uid, guest_uid: data.guest_uid };
-    } else if (error && error.code !== "PGRST116") {
-      console.warn("[sync] load members err:", error.message);
+      return;
     }
+    // 配对码可能已被删除（一次性）→ 从 sync_data 现有行恢复成员 uid
+    const { data: rows } = await Sync.client.from("sync_data").select("host_uid, guest_uid").eq("room", room).limit(1);
+    if (rows && rows.length > 0 && rows[0]) {
+      const r = rows[0];
+      if (r.host_uid || r.guest_uid) Sync._members = { host_uid: r.host_uid || Sync.uid, guest_uid: r.guest_uid || Sync.uid };
+    }
+    // 兜底：_members 仍缺失时，用本机 uid 填 host（对方 uid 会在 realtime UPDATE / push 中补全）
+    if (!Sync._members) Sync._members = { host_uid: Sync.uid, guest_uid: Sync.uid };
   } catch (e) { console.warn("[sync] load members:", e.message); }
 }
 
