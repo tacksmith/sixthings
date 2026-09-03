@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260824x";
+const APP_VERSION = "20260824y";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -862,7 +862,17 @@ function handle(act, id, btn) {
       break;
     }
     case "reset":
-      if (confirm("确定清空所有数据？")) { localStorage.removeItem(KEY); S = defaultState(); toast("已清空"); }
+      if (confirm("确定清空所有数据？")) {
+        localStorage.removeItem(KEY);
+        S = defaultState();
+        // 同步清掉 IndexedDB 备份，避免刷新后 autoRestore 把旧数据复活
+        try {
+          const dbReq = indexedDB.deleteDatabase(IDB_NAME);
+          dbReq.onsuccess = () => {}; dbReq.onerror = () => {}; dbReq.onblocked = () => {};
+        } catch (e) {}
+        _idbReady = false;
+        toast("已清空");
+      }
       break;
   }
   render();
