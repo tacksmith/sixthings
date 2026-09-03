@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260824y";
+const APP_VERSION = "20260824z";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -141,7 +141,15 @@ function ensureToday() { const k = keyToday(); if (!S.days[k]) { S.days[k] = { i
 // 把「规划」里到期的清单激活成今天的清单
 function activateToday() {
   const k = keyToday();
-  if (!S.days[k] && S.plan && S.plan.date <= k) {
+  if (!S.plan) return;
+  if (S.plan.date < k) {
+    // 过期规划（date < 今天）：若今天还没有清单则激活，否则丢弃；无论哪种都不再残留
+    if (!S.days[k] && S.plan.items && S.plan.items.length > 0) {
+      S.days[k] = { items: S.plan.items.map(i => ({ id: uid(), text: i.text, done: false, skipped: false })), closed: false };
+    }
+    S.plan = null;
+    save();
+  } else if (!S.days[k] && S.plan.date <= k) {
     S.days[k] = { items: S.plan.items.map(i => ({ id: uid(), text: i.text, done: false, skipped: false })), closed: false };
     S.plan = null;
     save();
