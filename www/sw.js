@@ -1,9 +1,9 @@
 /* Service Worker：离线缓存 + stale-while-revalidate（先回缓存，后台更新，保证发版后能拿到新版） */
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = "sixthings-v3:" + SCOPE.pathname + ":";
-const CACHE = CACHE_PREFIX + "20260915d";
+const CACHE = CACHE_PREFIX + "20260915e";
 const ASSETS = [
-  "./", "./index.html", "./styles.css?v=20260915d", "./app.js?v=20260915d", "./sync.js?v=20260915d", "./sync-engine.js?v=20260915d", "./config.js",
+  "./", "./index.html", "./styles.css?v=20260915e", "./app.js?v=20260915e", "./sync.js?v=20260915e", "./sync-engine.js?v=20260915e", "./i18n.js?v=20260915e", "./config.js",
   "./manifest.webmanifest",
   "./vendor/supabase.umd.js", "./vendor/qrcode.min.js", "./vendor/jsqr.js",
   "./icons/icon-192.png", "./icons/icon-512.png"

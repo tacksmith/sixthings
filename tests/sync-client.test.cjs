@@ -9,7 +9,7 @@ function context(client) {
     window:{SIXTHINGS_CONFIG:{url:'http://localhost',anonKey:'test-key'},supabase:{createClient:()=>client},addEventListener:(name,fn)=>{events[name]=fn;}},
     document:{addEventListener(){}},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v)},
     setTimeout:()=>++timer,clearTimeout(){},setInterval:()=>++timer,clearInterval(){}});
-  for(const name of ['sync-engine.js','sync.js'])vm.runInContext(fs.readFileSync('www/'+name,'utf8'),box);
+  for(const name of ['i18n.js','sync-engine.js','sync.js'])vm.runInContext(fs.readFileSync('www/'+name,'utf8'),box);
   vm.runInContext('let fixture=SixSync.project();Sync.onGetData=()=>fixture;Sync.onData=p=>{fixture=p.data;};',box);
   return {run:code=>vm.runInContext(code,box),events,memory};
 }
@@ -79,4 +79,30 @@ test('two devices activating the same plan keep the same task identities',()=>{
     c.run('save=()=>{};activateToday()');ids.push(c.run('getToday().items[0].id'));
   }
   assert.deepEqual(ids,['same-plan-task','same-plan-task']);
+});
+test('existing sync errors follow language changes without losing the original failure',async()=>{
+  const client=backend();client.auth.getSession=async()=>({error:{code:'42501',message:'access denied'}});
+  const c=context(client);
+  const result=await c.run('Sync.syncCreatePairing()');
+  assert.equal(result.ok,false);
+  assert.match(result.reason,/访问权限/);
+  c.run('I18n.setLang("en")');
+  assert.match(c.run('Sync.lastError'),/no access/);
+  c.run('I18n.setLang("zh")');
+  assert.match(c.run('Sync.lastError'),/访问权限/);
+  c.run('syncSetState("connected")');
+  assert.equal(c.run('Sync.lastError'),'');
+});
+test('stopping a scanner before camera permission resolves releases the late stream',async()=>{
+  const c=context(backend());
+  c.run(`let releaseCamera,stoppedTracks=0,played=0;
+    window.jsQR=()=>{};
+    globalThis.navigator={mediaDevices:{getUserMedia:()=>new Promise(resolve=>{releaseCamera=resolve;})}};
+    const video={play:()=>{played++;return Promise.resolve();}};
+    const scanner=Sync.syncStartScanner(video,()=>false);
+    scanner.stop();
+    releaseCamera({getTracks:()=>[{stop:()=>{stoppedTracks++;}}]});`);
+  await Promise.resolve();
+  assert.equal(c.run('stoppedTracks'),1);
+  assert.equal(c.run('played'),0);
 });

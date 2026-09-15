@@ -85,7 +85,9 @@
       this.running = null;
       const raw = storage.getItem(this.key);
       const saved = raw ? JSON.parse(raw) : null;
-      if (saved && (saved.version !== 3 || saved.room !== room)) throw new Error("同步缓存格式不正确，请先导出备份");
+      if (saved && (saved.version !== 3 || saved.room !== room)) {
+        const error = new Error("同步缓存格式不正确，请先导出备份"); error.code = "SYNC_CACHE_FORMAT"; throw error;
+      }
       this.base = project(saved?.base);
       this.view = project(saved?.view || initial);
       this.revision = saved?.revision ?? -1;
@@ -116,7 +118,7 @@
     }
     accept(record, baseline) {
       if (!record || !Number.isSafeInteger(record.revision) || record.revision < this.revision || !object(record.data)) {
-        throw new Error("同步服务器返回了无效版本");
+        const error = new Error("同步服务器返回了无效版本"); error.code = "SYNC_INVALID_VERSION"; throw error;
       }
       const incoming = project(record.data);
       const next = merge(baseline, this.view, incoming);

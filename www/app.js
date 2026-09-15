@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260915d";
+const APP_VERSION = "20260915e";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -41,12 +41,10 @@ function fmtDate(d) {
 function keyToday(offset = 0) { const d = new Date(); d.setDate(d.getDate() + offset); return fmtDate(d); }
 function keyTomorrow() { return keyToday(1); }
 function prettyDate(key) {
-  if (key === keyToday()) return "今天";
-  if (key === keyToday(1)) return "明天";
-  if (key === keyToday(-1)) return "昨天";
-  const d = new Date(key + "T00:00:00");
-  const wd = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
-  return (d.getMonth() + 1) + "月" + d.getDate() + "日 周" + wd;
+  if (key === keyToday()) return I18n.t("date_today");
+  if (key === keyToday(1)) return I18n.t("date_tomorrow");
+  if (key === keyToday(-1)) return I18n.t("date_yesterday");
+  return I18n.formatDateKey(key);
 }
 function nowHM() {
   const d = new Date();
@@ -84,7 +82,7 @@ function save() {
     if (typeof Sync !== "undefined") Sync.syncCapture(S);
     localStorage.setItem(KEY, JSON.stringify(S));
   } catch (error) {
-    toast("本机保存失败，请立即导出备份");
+    toast(I18n.t("toast_save_failed"));
     return;
   }
   idbBackup(); // 异步双写 IndexedDB 备份
@@ -195,7 +193,7 @@ function movePlanItem(from, to) {
 }
 function planDateLabel() {
   const p = S.plan;
-  return p ? (p.date === keyTomorrow() ? "明天" : prettyDate(p.date)) : "明天";
+  return p ? (p.date === keyTomorrow() ? I18n.t("date_tomorrow") : prettyDate(p.date)) : I18n.t("date_tomorrow");
 }
 // 顺延：今天没做完的 → 明天清单（与已规划的去重合并）
 function rolloverToday() {
@@ -276,7 +274,7 @@ function doAddToday() {
   if (!inp || !inp.value.trim()) return;
   const ok = addTodayItem(inp.value);
   inp.value = "";
-  if (ok) { toast("已加入今天的清单"); } else { toast("清单满了（" + S.settings.itemLimit + " 件），先删掉或移入收件箱"); }
+  if (ok) { toast(I18n.t("toast_added_today")); } else { toast(I18n.t("toast_today_full", { n: S.settings.itemLimit })); }
   renderToday();
   const ti = el("today-input");
   if (ti) ti.focus();
@@ -338,14 +336,14 @@ function checkReminders() {
   const cur = day ? activeItem(day) : null;
   if (cur && timeToMin(now) >= timeToMin(s.morningReminder) && n.morning !== today) {
     n.morning = today; save();
-    const msg = "现在只做这一件：" + cur.text;
-    notify("今天的第一件事", msg);
+    const msg = I18n.t("notify_morning_body", { text: cur.text });
+    notify(I18n.t("notify_morning_title"), msg);
   }
   // 晚间：该规划明天了
   const planReady = S.plan && S.plan.date === keyTomorrow() && S.plan.items.length > 0;
   if ((day && day.items.length > 0) && !planReady && timeToMin(now) >= timeToMin(s.planReminder) && n.evening !== today) {
     n.evening = today; save();
-    notify("该规划明天了", "先别划走，写下明天最重要的 " + s.itemLimit + " 件事");
+    notify(I18n.t("notify_evening_title"), I18n.t("notify_evening_body", { n: s.itemLimit }));
   }
 }
 function notify(title, body) {
@@ -362,12 +360,21 @@ function notify(title, body) {
 function el(id) { return document.getElementById(id); }
 
 function renderTop() {
-  const d = new Date();
-  const wd = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
-  el("top-date").textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日 · 周" + wd;
+  el("top-date").textContent = I18n.formatTopDate(new Date());
+}
+
+// 离开设置页或切换语言时，关闭仍在运行的扫码摄像头
+function stopSyncScanner() {
+  const wrap = el("sync-scanner-wrap");
+  if (wrap) wrap.style.display = "none";
+  if (typeof Sync !== "undefined" && Sync._scanStop) {
+    try { Sync._scanStop(); } catch (e) {}
+    Sync._scanStop = null;
+  }
 }
 
 function render() {
+  if (currentTab !== "settings") stopSyncScanner();
   renderTop();
   const tabs = document.querySelectorAll(".tab");
   tabs.forEach(t => t.classList.toggle("active", t.dataset.tab === currentTab));
@@ -395,12 +402,12 @@ function renderToday() {
   if (isEvening && day && !day.closed && day.items.length > 0) {
     const carry = day.items.filter(i => !i.done && !i.skipped);
     if (carry.length > 0) {
-      html += '<div class="banner">今天还有 <b>' + carry.length + '</b> 件没做完。做不完就顺延到明天，别内疚。<div class="banner-actions"><button class="btn" data-act="rollover">顺延到明天的清单</button></div></div>';
+      html += '<div class="banner">' + I18n.t("today_banner_unfinished", { n: carry.length }) + '<div class="banner-actions"><button class="btn" data-act="rollover">' + I18n.t("today_banner_rollover_btn") + '</button></div></div>';
     }
   }
 
   if (!day) {
-    html += '<div class="empty"><div class="big">✍️</div><p>今天还没有清单。<br/>Ivy Lee 法说：睡前写下明天最重要的几件事，<br/>白天就只按顺序做第一件。</p><button class="btn btn-primary" data-act="start-today">现在就开始写今天的清单</button><p class="muted" style="margin-top:14px">或去「规划」写下明天的清单</p></div>';
+    html += '<div class="empty"><div class="big">✍️</div><p>' + I18n.t("today_empty_1") + '<br/>' + I18n.t("today_empty_2") + '<br/>' + I18n.t("today_empty_3") + '</p><button class="btn btn-primary" data-act="start-today">' + I18n.t("today_empty_start_btn") + '</button><p class="muted" style="margin-top:14px">' + I18n.t("today_empty_alt") + '</p></div>';
     html += renderInboxHTML();
     screen.innerHTML = html;
     bind(screen);
@@ -409,7 +416,7 @@ function renderToday() {
 
   if (day.items.length === 0) {
     // 刚创建今天的清单，还没写事项
-    html += '<div class="card" style="margin-top:12px"><b style="font-size:15px">写下今天要做的事</b><div class="add-row" style="margin-top:10px"><input id="today-input" placeholder="写一件今天要做的事…" maxlength="80" /><button data-act="add-today">+</button></div><p class="muted" style="margin-top:10px">最多 ' + s.itemLimit + ' 件，最重要放第 1 位。</p></div>';
+    html += '<div class="card" style="margin-top:12px"><b style="font-size:15px">' + I18n.t("today_write_title") + '</b><div class="add-row" style="margin-top:10px"><input id="today-input" placeholder="' + I18n.t("today_input_placeholder") + '" maxlength="80" /><button data-act="add-today">+</button></div><p class="muted" style="margin-top:10px">' + I18n.t("today_input_max", { n: s.itemLimit }) + '</p></div>';
     html += renderInboxHTML();
     screen.innerHTML = html;
     bind(screen);
@@ -424,33 +431,33 @@ function renderToday() {
   const total = day.items.length;
   const pct = Math.round(doneN / total * 100);
 
-  html += '<div class="progress-wrap"><div class="progress-meta"><span>今日进度</span><span>' + doneN + '/' + total + (pct === 100 ? ' 全搞定 🎉' : '') + '</span></div><div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div></div>';
+  html += '<div class="progress-wrap"><div class="progress-meta"><span>' + I18n.t("today_progress_label") + '</span><span>' + doneN + '/' + total + (pct === 100 ? ' ' + I18n.t("today_all_done_suffix") : '') + '</span></div><div class="progress-bar"><div class="progress-fill" style="width:' + pct + '%"></div></div></div>';
 
   if (cur) {
-    html += '<div class="now-card"><div class="now-label">▶ 现在只做这一件 · ' + (idx + 1) + '/' + total + '</div><p class="now-text">' + esc(cur.text) + '</p><div class="now-actions">';
-    html += '<button class="btn btn-done" data-act="complete">搞定这件 ✓</button>';
-    if (s.allowSkip) html += '<button class="btn btn-skip" data-act="skip">跳过</button>';
+    html += '<div class="now-card"><div class="now-label">▶ ' + I18n.t("today_now", { idx: idx + 1, total }) + '</div><p class="now-text">' + esc(cur.text) + '</p><div class="now-actions">';
+    html += '<button class="btn btn-done" data-act="complete">' + I18n.t("today_done_btn") + '</button>';
+    if (s.allowSkip) html += '<button class="btn btn-skip" data-act="skip">' + I18n.t("today_skip_btn") + '</button>';
     html += '</div></div>';
   } else {
-    html += '<div class="now-card"><div class="now-label">🎉 全部搞定</div><p class="now-text">今天 ' + total + ' 件全做完了。<br/>去写明天的清单吧。</p></div>';
+    html += '<div class="now-card"><div class="now-label">' + I18n.t("today_all_done_label") + '</div><p class="now-text">' + I18n.t("today_all_done_desc", { total }) + '</p></div>';
   }
 
   // 清单
   html += '<ul class="todo-list">';
   day.items.forEach((it, i) => {
     const cls = it.done ? "done" : (i > idx ? "locked" : "");
-    const state = it.done ? "✓" : (it.skipped ? "跳过" : (i === idx ? "做这个" : "🔒"));
+    const state = it.done ? "✓" : (it.skipped ? I18n.t("today_state_skipped") : (i === idx ? I18n.t("today_state_active") : "🔒"));
     html += '<li class="' + cls + '"><span class="todo-num">' + (i + 1) + '</span><span class="todo-text">' + esc(it.text) + '</span><span class="todo-state">' + state + '</span></li>';
   });
   html += "</ul>";
 
   if (idx >= 0 && s.allowSkip) {
-    html += '<p class="muted" style="margin-top:10px">允许跳过已开启（跳过会顺延到明天）。</p>';
+    html += '<p class="muted" style="margin-top:10px">' + I18n.t("today_skip_note") + '</p>';
   }
 
   // 还没完成任何一件时，保留「再写一件」输入行（清单还没定稿）
   if (doneN === 0 && day.items.length < s.itemLimit) {
-    html += '<div class="add-row" style="margin-top:14px"><input id="today-input" placeholder="再写一件今天要做的事…（最多 ' + s.itemLimit + ' 件）" maxlength="80" /><button data-act="add-today">+</button></div>';
+    html += '<div class="add-row" style="margin-top:14px"><input id="today-input" placeholder="' + I18n.t("today_add_more_placeholder", { n: s.itemLimit }) + '" maxlength="80" /><button data-act="add-today">+</button></div>';
   }
 
   html += renderInboxHTML();
@@ -461,12 +468,12 @@ function renderToday() {
 }
 
 function renderInboxHTML() {
-  let html = '<div class="card" style="margin-top:16px"><div style="display:flex;align-items:center;justify-content:space-between"><b style="font-size:15px">收件箱 · 临时插入</b><span class="muted">突发事项先丢这里，不打断主清单</span></div>';
-  html += '<div class="add-row" style="margin-top:10px"><input id="inbox-input" placeholder="临时冒出来的事…" maxlength="80" /><button data-act="add-inbox">+</button></div>';
+  let html = '<div class="card" style="margin-top:16px"><div style="display:flex;align-items:center;justify-content:space-between"><b style="font-size:15px">' + I18n.t("inbox_title") + '</b><span class="muted">' + I18n.t("inbox_subtitle") + '</span></div>';
+  html += '<div class="add-row" style="margin-top:10px"><input id="inbox-input" placeholder="' + I18n.t("inbox_placeholder") + '" maxlength="80" /><button data-act="add-inbox">+</button></div>';
   if (S.inbox.length > 0) {
     html += '<ul class="plan-list">';
     S.inbox.forEach(it => {
-      html += '<li><span class="plan-rank" style="background:#eee">✎</span><span class="plan-text">' + esc(it.text) + '</span><button class="plan-del" data-act="inbox-promote" data-id="' + it.id + '" title="加入明天">→</button><button class="plan-del" data-act="inbox-del" data-id="' + it.id + '">✕</button></li>';
+      html += '<li><span class="plan-rank" style="background:#eee">✎</span><span class="plan-text">' + esc(it.text) + '</span><button class="plan-del" data-act="inbox-promote" data-id="' + it.id + '" title="' + I18n.t("inbox_promote_title") + '">→</button><button class="plan-del" data-act="inbox-del" data-id="' + it.id + '">✕</button></li>';
     });
     html += '</ul>';
   }
@@ -485,49 +492,52 @@ function renderPlan() {
   let banner = "";
   if (day && !day.closed && day.items.length > 0) {
     const carry = day.items.filter(i => !i.done && !i.skipped);
-    if (carry.length > 0) banner = '<div class="banner">今天还有 <b>' + carry.length + '</b> 件没做完 → 一键顺延到明天。<div class="banner-actions"><button class="btn" data-act="rollover">顺延并继续规划</button></div></div>';
+    if (carry.length > 0) banner = '<div class="banner">' + I18n.t("plan_banner_unfinished", { n: carry.length }) + '<div class="banner-actions"><button class="btn" data-act="rollover">' + I18n.t("plan_rollover_btn") + '</button></div></div>';
   }
 
   // 一次机会：今天清单已定型（全做完/顺延），且机会未用 → 允许把新规划当今日任务执行
   if (todayIsDone() && !S.usedTodayChance) {
     const hasPlan = S.plan && S.plan.items && S.plan.items.length > 0;
-    banner += '<div class="banner chance-banner">今天的清单已经' + (day.closed ? '顺延收尾' : '全部做完') + '。要不要给一次机会，把' + (hasPlan ? '下面的规划' : '你现在要写的') + '作为<b>今天的任务</b>立即执行？<div class="banner-actions"><button class="btn" data-act="use-chance">用这次机会，作为今日任务</button></div></div>';
+    banner += '<div class="banner chance-banner">' + I18n.t("plan_chance_banner", {
+      state: day.closed ? I18n.t("plan_chance_rolled") : I18n.t("plan_chance_done"),
+      what: hasPlan ? I18n.t("plan_chance_plan") : I18n.t("plan_chance_write"),
+    }) + '<div class="banner-actions"><button class="btn" data-act="use-chance">' + I18n.t("plan_chance_btn") + '</button></div></div>';
   }
 
-  const capNote = p.items.length >= s.itemLimit ? "只能 " + s.itemLimit + " 件喔，满了" : "最多 " + s.itemLimit + " 件，够少才能专注";
+  const capNote = p.items.length >= s.itemLimit ? I18n.t("plan_cap_full", { n: s.itemLimit }) : I18n.t("plan_cap_note", { n: s.itemLimit });
 
   let html = banner;
-  html += '<div class="plan-header"><h2 class="plan-title">写下' + (p.date === keyTomorrow() ? '明天' : prettyDate(p.date)) + '的清单</h2><div class="plan-cap">' + capNote + ' · 最重要放第 1 位</div></div>';
+  html += '<div class="plan-header"><h2 class="plan-title">' + I18n.t("plan_title_for", { date: (p.date === keyTomorrow() ? I18n.t("date_tomorrow") : prettyDate(p.date)) }) + '</h2><div class="plan-cap">' + capNote + ' · ' + I18n.t("plan_first_note") + '</div></div>';
 
-  html += '<div class="add-row"><input id="plan-input" placeholder="' + (p.items.length >= s.itemLimit ? '清单满了，先删掉一些' : '写一件事，例如：完成周报') + '" maxlength="80" ' + (p.items.length >= s.itemLimit ? "disabled" : "") + ' /><button data-act="add-plan" ' + (p.items.length >= s.itemLimit ? "disabled" : "") + '>+</button></div>';
+  html += '<div class="add-row"><input id="plan-input" placeholder="' + (p.items.length >= s.itemLimit ? I18n.t("plan_input_placeholder_full") : I18n.t("plan_input_placeholder")) + '" maxlength="80" ' + (p.items.length >= s.itemLimit ? "disabled" : "") + ' /><button data-act="add-plan" ' + (p.items.length >= s.itemLimit ? "disabled" : "") + '>+</button></div>';
 
   if (p.items.length === 0) {
-    html += '<div class="empty" style="padding:24px 12px"><div class="big">🌙</div><p>还没写。现在就写下明天最重要的几件事，<br/>越多反而越做不完。</p></div>';
+    html += '<div class="empty" style="padding:24px 12px"><div class="big">🌙</div><p>' + I18n.t("plan_empty_1") + '<br/>' + I18n.t("plan_empty_2") + '</p></div>';
   } else {
     html += '<ul class="plan-list" id="plan-list">';
     p.items.forEach((it, i) => {
       if (editingPlanId === it.id) {
         // 编辑模式：显示输入框 + 保存/取消
-        html += '<li data-id="' + it.id + '" data-idx="' + i + '" class="editing"><span class="plan-rank">' + (i + 1) + '</span><input id="plan-edit-input" class="plan-edit-input" value="' + esc(it.text) + '" maxlength="80" data-id="' + it.id + '" /><button class="plan-del" data-act="save-plan-edit" data-id="' + it.id + '" title="保存">✓</button><button class="plan-del" data-act="cancel-plan-edit" title="取消">✕</button></li>';
+        html += '<li data-id="' + it.id + '" data-idx="' + i + '" class="editing"><span class="plan-rank">' + (i + 1) + '</span><input id="plan-edit-input" class="plan-edit-input" value="' + esc(it.text) + '" maxlength="80" data-id="' + it.id + '" /><button class="plan-del" data-act="save-plan-edit" data-id="' + it.id + '" title="' + I18n.t("plan_edit_save_title") + '">✓</button><button class="plan-del" data-act="cancel-plan-edit" title="' + I18n.t("plan_edit_cancel_title") + '">✕</button></li>';
       } else {
-        html += '<li data-id="' + it.id + '" data-idx="' + i + '"><span class="plan-rank">' + (i + 1) + '</span><span class="plan-text">' + esc(it.text) + '</span><button class="plan-del" data-act="edit-plan" data-id="' + it.id + '" title="编辑">✎</button><span class="plan-drag" title="拖拽排序">⠿</span><button class="plan-del" data-act="del-plan" data-id="' + it.id + '">✕</button></li>';
+        html += '<li data-id="' + it.id + '" data-idx="' + i + '"><span class="plan-rank">' + (i + 1) + '</span><span class="plan-text">' + esc(it.text) + '</span><button class="plan-del" data-act="edit-plan" data-id="' + it.id + '" title="' + I18n.t("plan_edit_title") + '">✎</button><span class="plan-drag" title="' + I18n.t("plan_drag_title") + '">⠿</span><button class="plan-del" data-act="del-plan" data-id="' + it.id + '">✕</button></li>';
       }
     });
     html += '</ul>';
     if (p.items.length > s.itemLimit) {
-      html += '<p class="muted" style="margin-top:8px">⚠️ 比上限多了 ' + (p.items.length - s.itemLimit) + ' 件（可能来自顺延），删掉一些或移到后天。</p>';
+      html += '<p class="muted" style="margin-top:8px">' + I18n.t("plan_over_limit", { n: p.items.length - s.itemLimit }) + '</p>';
     }
   }
 
   if (S.inbox.length > 0) {
-    html += '<div class="card" style="margin-top:16px"><b style="font-size:15px">收件箱 → 加入明天</b><ul class="plan-list">';
+    html += '<div class="card" style="margin-top:16px"><b style="font-size:15px">' + I18n.t("plan_inbox_title") + '</b><ul class="plan-list">';
     S.inbox.forEach(it => {
-      html += '<li><span class="plan-rank" style="background:#eee">✎</span><span class="plan-text">' + esc(it.text) + '</span><button class="plan-del" data-act="inbox-promote" data-id="' + it.id + '">→加入</button></li>';
+      html += '<li><span class="plan-rank" style="background:#eee">✎</span><span class="plan-text">' + esc(it.text) + '</span><button class="plan-del" data-act="inbox-promote" data-id="' + it.id + '">' + I18n.t("plan_inbox_promote_btn") + '</button></li>';
     });
     html += '</ul></div>';
   }
 
-  html += '<div class="hint-note">💡 一件事 = 一个能完成的动作。写「完成周报」，别写「处理工作」。<br/>✅ 已存本机，关掉也不会丢。</div>';
+  html += '<div class="hint-note">' + I18n.t("plan_hint_1") + '<br/>' + I18n.t("plan_hint_2") + '</div>';
 
   screen.innerHTML = html;
   bind(screen);
@@ -551,7 +561,7 @@ function renderHistory() {
   const best = bestStreak();
   const total = totalDone();
 
-  let html = '<div class="card"><div class="streak-hero"><div class="streak-num">' + streak + '</div><div class="streak-label">🔥 连续坚持天数</div><div class="streak-tip">坚持两三个月，推动程度会远超过你的想象</div></div><div style="display:flex;justify-content:space-around;padding:8px 0 2px"><div style="text-align:center"><div style="font-size:22px;font-weight:800;color:var(--ink-2)">' + best + '</div><div class="muted">最长连续</div></div><div style="text-align:center"><div style="font-size:22px;font-weight:800;color:var(--ink-2)">' + total + '</div><div class="muted">累计完成</div></div></div></div>';
+  let html = '<div class="card"><div class="streak-hero"><div class="streak-num">' + streak + '</div><div class="streak-label">' + I18n.t("hist_streak_label") + '</div><div class="streak-tip">' + I18n.t("hist_streak_tip") + '</div></div><div style="display:flex;justify-content:space-around;padding:8px 0 2px"><div style="text-align:center"><div style="font-size:22px;font-weight:800;color:var(--ink-2)">' + best + '</div><div class="muted">' + I18n.t("hist_best") + '</div></div><div style="text-align:center"><div style="font-size:22px;font-weight:800;color:var(--ink-2)">' + total + '</div><div class="muted">' + I18n.t("hist_total") + '</div></div></div></div>';
 
   // 月历
   html += renderCalendarHTML();
@@ -573,11 +583,10 @@ function renderCalendarHTML() {
   // 当月 1 号是星期几（0=周日）
   const lead = firstDay.getDay();
   const today = keyToday();
-  const monthLabel = y + " 年 " + (m + 1) + " 月";
+  const monthLabel = I18n.formatMonth(y, m);
 
   let html = '<div class="card"><div class="cal-header"><button class="cal-nav" data-act="hist-prev" data-delta="-1">‹</button><div class="cal-title">' + monthLabel + '</div><button class="cal-nav" data-act="hist-next" data-delta="1">›</button></div><div class="cal-grid">';
-  const wd = ["日", "一", "二", "三", "四", "五", "六"];
-  wd.forEach(w => { html += '<div class="cal-wd">' + w + '</div>'; });
+  I18n.weekdays().forEach(w => { html += '<div class="cal-wd">' + w + '</div>'; });
   // 前导空格
   for (let i = 0; i < lead; i++) html += '<div class="cal-cell empty"></div>';
   for (let d = 1; d <= daysInMonth; d++) {
@@ -596,7 +605,7 @@ function renderCalendarHTML() {
     const isSel = key === histSelected;
     html += '<button class="cal-cell ' + cls + (isToday ? " today" : "") + (isSel ? " sel" : "") + '" data-act="hist-day" data-id="' + key + '">' + d + '</button>';
   }
-  html += '</div><div class="cal-legend"><span class="lg lg-full"></span>全完成 <span class="lg lg-partial"></span>部分 <span class="lg lg-some"></span>有未完成 <span class="lg lg-blank"></span>无记录</div></div>';
+  html += '</div><div class="cal-legend"><span class="lg lg-full"></span>' + I18n.t("cal_legend_full") + ' <span class="lg lg-partial"></span>' + I18n.t("cal_legend_partial") + ' <span class="lg lg-some"></span>' + I18n.t("cal_legend_some") + ' <span class="lg lg-blank"></span>' + I18n.t("cal_legend_blank") + '</div></div>';
   return html;
 }
 
@@ -604,13 +613,13 @@ function renderCalendarHTML() {
 function renderDayDetail(key) {
   const day = S.days[key];
   if (!day || day.items.length === 0) {
-    return '<div class="card"><h2 class="sec-title" style="font-size:16px">' + prettyDate(key) + '</h2><p class="muted" style="padding:8px 2px">这一天没有记录任务。</p></div>';
+    return '<div class="card"><h2 class="sec-title" style="font-size:16px">' + prettyDate(key) + '</h2><p class="muted" style="padding:8px 2px">' + I18n.t("hist_day_no_record") + '</p></div>';
   }
   const st = dayStats(key);
-  let html = '<div class="card"><div class="day-detail-head"><h2 class="sec-title" style="font-size:16px">' + prettyDate(key) + '</h2><span class="day-detail-sum">' + st.done + '/' + st.total + ' 完成</span></div><ul class="day-detail-list">';
+  let html = '<div class="card"><div class="day-detail-head"><h2 class="sec-title" style="font-size:16px">' + prettyDate(key) + '</h2><span class="day-detail-sum">' + I18n.t("hist_day_sum", { done: st.done, total: st.total }) + '</span></div><ul class="day-detail-list">';
   day.items.forEach((it, idx) => {
     const stCls = it.done ? "done" : (it.skipped ? "skipped" : "todo");
-    const stTxt = it.done ? "✓" : (it.skipped ? "跳过" : "未做");
+    const stTxt = it.done ? "✓" : (it.skipped ? I18n.t("hist_day_state_skipped") : I18n.t("hist_day_state_todo"));
     html += '<li class="dd-' + stCls + '"><span class="dd-rank">' + (idx + 1) + '</span><span class="dd-text">' + esc(it.text) + '</span><span class="dd-state">' + stTxt + '</span></li>';
   });
   html += '</ul></div>';
@@ -618,59 +627,67 @@ function renderDayDetail(key) {
 }
 
 function renderSettings() {
+  stopSyncScanner(); // 设置页重渲染时关闭仍在运行的扫码摄像头
   const s = S.settings;
   const screen = el("screen");
   let html = '';
 
-  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">清单规则</h2>';
-  html += '<div class="set-row"><div><div class="set-label">每天清单上限</div><div class="set-desc">方法原版 6 件，作者说一般人 3 件就够</div></div><div class="limit-stepper"><button data-act="limit-down" ' + (s.itemLimit <= 3 ? "disabled" : "") + '>−</button><span class="set-value">' + s.itemLimit + '</span><button data-act="limit-up" ' + (s.itemLimit >= 6 ? "disabled" : "") + '>+</button></div></div>';
-  html += '<div class="set-row"><div><div class="set-label">允许跳过</div><div class="set-desc">关闭 = 严格按顺序，第 1 件做完前不能碰别的</div></div><label class="switch"><input type="checkbox" data-act="toggle-skip" ' + (s.allowSkip ? "checked" : "") + '/><span class="track"></span></label></div>';
-  html += '<div class="set-row"><div><div class="set-label">一次机会可再开启</div><div class="set-desc">今天清单定型后，把新规划作为今日任务执行的机会。用完可在此重新打开。</div></div><label class="switch"><input type="checkbox" data-act="toggle-chance" ' + (!S.usedTodayChance ? "checked" : "") + '/><span class="track"></span></label></div>';
+  // 语言选择：顶部、双语显示，选项名两种模式下都用原生名称
+  const langEn = I18n.lang() === "en";
+  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">' + I18n.t("settings_language_title") + '</h2>';
+  html += '<div class="set-row lang-row"><div><div class="set-label">' + I18n.t("settings_language_label") + '</div><div class="set-desc">' + I18n.t("settings_language_desc") + '</div></div>';
+  html += '<select id="lang-select" class="lang-select" data-act="set-lang" aria-label="' + I18n.t("settings_language_label") + '"><option value="zh"' + (langEn ? "" : " selected") + '>简体中文</option><option value="en"' + (langEn ? " selected" : "") + '>English</option></select></div>';
   html += '</div>';
 
-  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">提醒</h2>';
-  html += '<div class="set-row"><div><div class="set-label">晚间规划提醒</div><div class="set-desc">睡前写下明天的清单</div></div><input type="time" data-act="plan-reminder" value="' + s.planReminder + '" style="border:1.5px solid var(--line);border-radius:10px;padding:6px;font-size:15px" /></div>';
-  html += '<div class="set-row"><div><div class="set-label">早晨开工提醒</div><div class="set-desc">推送「今天的第一件事」</div></div><input type="time" data-act="morning-reminder" value="' + s.morningReminder + '" style="border:1.5px solid var(--line);border-radius:10px;padding:6px;font-size:15px" /></div>';
-  html += '<div class="set-row"><div><div class="set-label">系统通知</div><div class="set-desc">APP 打开时会按上面时间提醒（安装到主屏体验更好）</div></div><label class="switch"><input type="checkbox" data-act="toggle-notify" ' + (s.notify ? "checked" : "") + '/><span class="track"></span></label></div>';
+  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">' + I18n.t("set_rules_title") + '</h2>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_item_limit") + '</div><div class="set-desc">' + I18n.t("set_item_limit_desc") + '</div></div><div class="limit-stepper"><button data-act="limit-down" ' + (s.itemLimit <= 3 ? "disabled" : "") + '>−</button><span class="set-value">' + s.itemLimit + '</span><button data-act="limit-up" ' + (s.itemLimit >= 6 ? "disabled" : "") + '>+</button></div></div>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_allow_skip") + '</div><div class="set-desc">' + I18n.t("set_allow_skip_desc") + '</div></div><label class="switch"><input type="checkbox" data-act="toggle-skip" ' + (s.allowSkip ? "checked" : "") + '/><span class="track"></span></label></div>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_chance") + '</div><div class="set-desc">' + I18n.t("set_chance_desc") + '</div></div><label class="switch"><input type="checkbox" data-act="toggle-chance" ' + (!S.usedTodayChance ? "checked" : "") + '/><span class="track"></span></label></div>';
   html += '</div>';
 
-  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">这套方法 · Ivy Lee 法</h2>';
+  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">' + I18n.t("set_reminders_title") + '</h2>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_plan_reminder") + '</div><div class="set-desc">' + I18n.t("set_plan_reminder_desc") + '</div></div><input type="time" data-act="plan-reminder" value="' + s.planReminder + '" style="border:1.5px solid var(--line);border-radius:10px;padding:6px;font-size:15px" /></div>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_morning_reminder") + '</div><div class="set-desc">' + I18n.t("set_morning_reminder_desc") + '</div></div><input type="time" data-act="morning-reminder" value="' + s.morningReminder + '" style="border:1.5px solid var(--line);border-radius:10px;padding:6px;font-size:15px" /></div>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_notify") + '</div><div class="set-desc">' + I18n.t("set_notify_desc") + '</div></div><label class="switch"><input type="checkbox" data-act="toggle-notify" ' + (s.notify ? "checked" : "") + '/><span class="track"></span></label></div>';
+  html += '</div>';
+
+  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">' + I18n.t("set_method_title") + '</h2>';
   const steps = [
-    ["睡前列清单", "每天工作结束前，写下明天需要完成的 6 件（或 3 件）最重要的事，只能这么多。"],
-    ["按重要排序", "按重要程度排序，最重要的放第 1，以此类推。"],
-    ["只做第一件", "隔天严格按顺序做。第 1 件做完之前，不能碰其他任何事。"],
-    ["做不完就顺延", "真的做不完，就移到明天的清单里重新排序，别内疚。"],
+    [I18n.t("method_1_title"), I18n.t("method_1_desc")],
+    [I18n.t("method_2_title"), I18n.t("method_2_desc")],
+    [I18n.t("method_3_title"), I18n.t("method_3_desc")],
+    [I18n.t("method_4_title"), I18n.t("method_4_desc")],
   ];
   steps.forEach(([t, d], i) => {
     html += '<div class="method-step"><span class="n">' + (i + 1) + '</span><p><b>' + t + '</b> — ' + d + '</p></div>';
   });
-  html += '<p class="muted" style="margin-top:10px">1918 年 Ivy Lee 靠这套方法，让美国钢铁公司老板 Charles Schwab 付了 25,000 美金。真正的难点不是方法，是分辨哪些才是重要的事。</p>';
+  html += '<p class="muted" style="margin-top:10px">' + I18n.t("set_method_note") + '</p>';
   html += '</div>';
 
   const syncOk = typeof Sync !== "undefined" && Sync.enabled;
   const paired = typeof Sync !== "undefined" && Sync.paired;
-  html += '<div class="card sync-status-card" data-sync-mode="' + syncOk + ':' + paired + '"><h2 class="sec-title" style="font-size:16px">多端同步</h2>';
+  html += '<div class="card sync-status-card" data-sync-mode="' + syncOk + ':' + paired + '"><h2 class="sec-title" style="font-size:16px">' + I18n.t("set_sync_title") + '</h2>';
   html += '<p class="sync-label muted">' + syncStatusLabel() + '</p><p class="sync-error muted"></p>';
   if (paired) {
-    html += '<p class="muted"><span class="sync-members">' + Sync.members + '</span> 台设备共享清单。新设备可继续扫码加入。</p>';
-    html += '<button class="btn ghost-btn" data-act="sync-disconnect">停止本机同步</button> ';
+    html += '<p class="sync-members muted">' + esc(I18n.t("set_sync_members", { n: Sync.members })) + '</p>';
+    html += '<button class="btn ghost-btn" data-act="sync-disconnect">' + I18n.t("set_sync_disconnect_btn") + '</button> ';
   } else {
-    html += '<p class="muted">' + (syncOk ? '创建配对码，或输入另一台设备的配对码。' : '当前使用本机存储。维护者启用同步后，可以在多台设备间共享清单。') + '</p>';
+    html += '<p class="muted">' + (syncOk ? I18n.t("set_sync_unpaired_host") : I18n.t("set_sync_unpaired_local")) + '</p>';
   }
-  html += '<button class="btn" data-act="sync-pair">' + (paired ? '添加设备' : '显示配对码') + '</button>';
+  html += '<button class="btn" data-act="sync-pair">' + (paired ? I18n.t("set_sync_add_device_btn") : I18n.t("set_sync_show_code_btn")) + '</button>';
   html += '<div id="sync-pair-area"></div>';
-  html += '<div style="display:flex;gap:8px;margin-top:10px;align-items:center"><input id="sync-code-input" placeholder="输入12位配对码" maxlength="12" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:8px;font-size:15px" /><button class="btn" data-act="sync-join">加入</button><button class="btn ghost-btn" data-act="sync-scan">扫码</button></div>';
-  html += '<div id="sync-scanner-wrap" style="display:none;margin-top:10px"><video id="sync-scanner" playsinline muted style="width:100%;max-width:280px;border-radius:12px;background:#000"></video><p class="muted">将摄像头对准另一台设备的二维码</p></div>';
-  html += '<p class="muted" style="font-size:12px">配对码10分钟有效，仅可加入一次。离线修改会保存在本机，联网后继续同步。</p></div>';
+  html += '<div style="display:flex;gap:8px;margin-top:10px;align-items:center"><input id="sync-code-input" placeholder="' + I18n.t("set_sync_code_placeholder") + '" maxlength="12" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:8px;font-size:15px" /><button class="btn" data-act="sync-join">' + I18n.t("set_sync_join_btn") + '</button><button class="btn ghost-btn" data-act="sync-scan">' + I18n.t("set_sync_scan_btn") + '</button></div>';
+  html += '<div id="sync-scanner-wrap" style="display:none;margin-top:10px"><video id="sync-scanner" playsinline muted style="width:100%;max-width:280px;border-radius:12px;background:#000"></video><p class="muted">' + I18n.t("set_sync_scan_hint") + '</p></div>';
+  html += '<p class="muted" style="font-size:12px">' + I18n.t("set_sync_code_note") + '</p></div>';
 
-  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">数据备份</h2>';
-  html += '<div class="set-row"><div><div class="set-label">导出备份</div><div class="set-desc">把全部清单与历史下载成文件，永久保存、可换设备</div></div><button class="btn" style="padding:8px 14px;font-size:13px" data-act="export-data">导出</button></div>';
-  html += '<div class="set-row"><div><div class="set-label">导入恢复</div><div class="set-desc">从备份文件恢复历史记录（会合并，不覆盖现有）</div></div><button class="btn ghost-btn" style="padding:8px 14px;font-size:13px" data-act="import-data">导入</button></div>';
+  html += '<div class="card"><h2 class="sec-title" style="font-size:16px">' + I18n.t("set_backup_title") + '</h2>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_export_label") + '</div><div class="set-desc">' + I18n.t("set_export_desc") + '</div></div><button class="btn" style="padding:8px 14px;font-size:13px" data-act="export-data">' + I18n.t("set_export_btn") + '</button></div>';
+  html += '<div class="set-row"><div><div class="set-label">' + I18n.t("set_import_label") + '</div><div class="set-desc">' + I18n.t("set_import_desc") + '</div></div><button class="btn ghost-btn" style="padding:8px 14px;font-size:13px" data-act="import-data">' + I18n.t("set_import_btn") + '</button></div>';
   html += '<input type="file" id="import-file" accept="application/json,.json" style="display:none" />';
   html += '</div>';
-  html += '<div class="card" style="margin-top:16px"><div class="set-row"><div><div class="set-label">重置所有数据</div><div class="set-desc">清空清单、历史和设置</div></div><button class="btn ghost-btn" style="padding:8px 14px;font-size:13px" data-act="reset">清空</button></div></div>';
-  html += '<p class="muted" style="text-align:center;margin-top:18px">六件事 · Six Things — 数据保存在本机；启用同步后也会保存在共享服务中。可随时导出备份。</p>';
-  html += '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;opacity:.7">版本 ' + APP_VERSION + '</p>';
+  html += '<div class="card" style="margin-top:16px"><div class="set-row"><div><div class="set-label">' + I18n.t("set_reset_label") + '</div><div class="set-desc">' + I18n.t("set_reset_desc") + '</div></div><button class="btn ghost-btn" style="padding:8px 14px;font-size:13px" data-act="reset">' + I18n.t("set_reset_btn") + '</button></div></div>';
+  html += '<p class="muted" style="text-align:center;margin-top:18px">' + I18n.t("set_footer_note") + '</p>';
+  html += '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;opacity:.7">' + I18n.t("set_footer_version", { v: APP_VERSION }) + '</p>';
 
   screen.innerHTML = html;
   bind(screen);
@@ -693,9 +710,9 @@ function renderSettings() {
           if (p.inbox && Array.isArray(p.inbox)) S.inbox = [...new Set([...S.inbox.map(i => i.text), ...p.inbox.map(i => i.text)])].map(t => ({ id: uid(), text: t }));
           if (p.plan && p.plan.items && (!S.plan || S.plan.items.length === 0)) S.plan = p.plan;
           save();
-          toast("已从备份恢复 " + Object.keys(p.days).length + " 天历史");
+          toast(I18n.t("toast_imported_days", { n: Object.keys(p.days).length }));
           render();
-        } catch (err) { toast("文件格式不对，未导入"); }
+        } catch (err) { toast(I18n.t("toast_import_failed")); }
       };
       rd.readAsText(f);
     });
@@ -708,7 +725,7 @@ function bind(root) {
   const sind = root.querySelector && root.querySelector("#sync-indicator");
   if (sind) sind.addEventListener("click", () => { currentTab = "settings"; render(); });
   root.querySelectorAll("[data-act]").forEach(b => {
-    const event = b.matches('input[type="checkbox"], input[type="time"]') ? "change" : "click";
+    const event = b.matches('input[type="checkbox"], input[type="time"], select') ? "change" : "click";
     b.addEventListener(event, (e) => {
       if (event === "click") e.preventDefault();
       const act = b.dataset.act;
@@ -720,27 +737,34 @@ function bind(root) {
 
 function handle(act, id, btn) {
   switch (act) {
+    case "set-lang":
+      // 切换界面语言：立即生效并持久化到独立 key；不触碰任务与同步数据
+      I18n.setLang(btn.value);
+      stopSyncScanner();
+      render();
+      updateSyncIndicator();
+      return;
     case "complete": {
       completeActive();
       const done = getToday().items.filter(i => i.done).length;
       const total = getToday().items.length;
       if (done === total) {
         burst("🎉");
-        toast("今天全部搞定！去写明天的清单吧");
+        toast(I18n.t("toast_complete_all"));
       } else {
         burst("✓");
         const nxt = activeItem(getToday());
-        toast(nxt ? "搞定一件 ✓ 下一件：" + nxt.text : "搞定一件 ✓");
+        toast(nxt ? I18n.t("toast_complete_next", { text: nxt.text }) : I18n.t("toast_complete_plain"));
       }
       break;
     }
     case "skip":
       skipActive();
-      toast("跳过了，今晚会顺延到明天");
+      toast(I18n.t("toast_skipped"));
       break;
     case "rollover": {
       const n = rolloverToday();
-      toast(n > 0 ? "已把 " + n + " 件顺延到明天" : "今天没有需要顺延的");
+      toast(n > 0 ? I18n.t("toast_rollover_n", { n }) : I18n.t("toast_rollover_none"));
       if (currentTab === "plan") renderPlan(); else renderToday();
       return;
     }
@@ -749,22 +773,22 @@ function handle(act, id, btn) {
       useTodayChance();
       currentTab = "today";
       renderToday();
-      toast(hadPlan ? "已把规划作为今日任务，去执行吧" : "机会已用，写下的就是今天的任务");
+      toast(hadPlan ? I18n.t("toast_chance_used_plan") : I18n.t("toast_chance_used_none"));
       return;
     }
     case "start-today": {
       startToday();
       renderToday();
-      toast("写下一件今天要做的事吧");
+      toast(I18n.t("toast_start_today"));
       return;
     }
     case "add-today": { doAddToday(); return; }
     case "add-inbox": {
       const inp = el("inbox-input");
-      if (inp && inp.value.trim()) { addInbox(inp.value); toast("已丢进收件箱，不打断主清单"); }
+      if (inp && inp.value.trim()) { addInbox(inp.value); toast(I18n.t("toast_inbox_added")); }
       break;
     }
-    case "inbox-promote": addPlanItem((S.inbox.find(i => i.id === id) || {}).text || ""); S.inbox = S.inbox.filter(i => i.id !== id); save(); toast("已加入清单"); break;
+    case "inbox-promote": addPlanItem((S.inbox.find(i => i.id === id) || {}).text || ""); S.inbox = S.inbox.filter(i => i.id !== id); save(); toast(I18n.t("toast_added_plan")); break;
     case "inbox-del": removeInbox(id); break;
     case "del-plan": removePlanItem(id); break;
     case "add-plan": doAddPlan(); return;
@@ -779,11 +803,11 @@ function handle(act, id, btn) {
     case "cancel-plan-edit": editingPlanId = null; renderPlan(); return;
     case "limit-up": if (S.settings.itemLimit < 6) { S.settings.itemLimit++; save(); } break;
     case "limit-down": if (S.settings.itemLimit > 3) { S.settings.itemLimit--; save(); } break;
-    case "toggle-skip": S.settings.allowSkip = btn.checked; save(); toast(S.settings.allowSkip ? "已开启跳过" : "已关闭跳过，严格按顺序"); break;
+    case "toggle-skip": S.settings.allowSkip = btn.checked; save(); toast(S.settings.allowSkip ? I18n.t("toast_skip_on") : I18n.t("toast_skip_off")); break;
     case "toggle-chance": {
       S.usedTodayChance = !btn.checked; // 打开开关 = 重置为可用(used=false)
       save();
-      toast(btn.checked ? "已重新开启一次机会" : "已关闭一次机会（不再提示）");
+      toast(btn.checked ? I18n.t("toast_chance_on") : I18n.t("toast_chance_off"));
       break;
     }
     case "toggle-notify": S.settings.notify = btn.checked; save(); if (btn.checked) requestNotify(); break;
@@ -804,57 +828,57 @@ function handle(act, id, btn) {
       return;
     }
     case "sync-pair": {
-      if (typeof Sync === "undefined" || !Sync.enabled) { toast("同步未配置：需先配置 Supabase"); break; }
+      if (typeof Sync === "undefined" || !Sync.enabled) { toast(I18n.t("toast_sync_unconfigured")); break; }
       Sync.syncCreatePairing().then(r => {
       if (r.ok) {
         const area = el("sync-pair-area");
         if (area) {
-          area.innerHTML = '<div style="margin-top:10px;padding:14px;border:1.5px dashed var(--accent);border-radius:12px;text-align:center"><div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">让另一台设备扫码或输入配对码加入</div><div id="sync-qr" style="margin:8px auto;width:160px;height:160px;background:#fff;padding:8px;border-radius:8px"></div><div style="font-size:24px;font-weight:900;letter-spacing:3px;color:var(--accent)">' + r.code + '</div><div style="font-size:12px;color:var(--ink-3);margin-top:6px">二维码 10 分钟有效，一次性</div></div>';
+          area.innerHTML = '<div style="margin-top:10px;padding:14px;border:1.5px dashed var(--accent);border-radius:12px;text-align:center"><div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">' + I18n.t("set_sync_pair_hint") + '</div><div id="sync-qr" style="margin:8px auto;width:160px;height:160px;background:#fff;padding:8px;border-radius:8px"></div><div style="font-size:24px;font-weight:900;letter-spacing:3px;color:var(--accent)">' + r.code + '</div><div style="font-size:12px;color:var(--ink-3);margin-top:6px">' + I18n.t("set_sync_pair_valid") + '</div></div>';
           if (typeof Sync.syncRenderQR === "function") Sync.syncRenderQR(el("sync-qr"), r.code);
         }
-        toast("配对码已生成：" + r.code);
-      } else { toast("配对失败：" + (r.reason || "未知")); }
+        toast(I18n.t("toast_pair_code", { code: r.code }));
+      } else { toast(I18n.t("toast_pair_failed", { reason: r.reason || I18n.t("common_unknown") })); }
       });
       break;
     }
     case "sync-scan": {
-      if (typeof Sync === "undefined" || !Sync.enabled) { toast("同步未配置：需先配置 Supabase"); break; }
+      if (typeof Sync === "undefined" || !Sync.enabled) { toast(I18n.t("toast_sync_unconfigured")); break; }
       const wrap = el("sync-scanner-wrap");
       const video = el("sync-scanner");
-      if (!wrap || !video) { toast("扫码功能不可用"); break; }
+      if (!wrap || !video) { toast(I18n.t("toast_scan_unavailable")); break; }
       if (wrap.style.display === "none") {
         const sc = Sync.syncStartScanner(video, (code) => {
           // 识别到二维码（内容=配对码）
           if (code && /^[0-9A-F]{12}$/i.test(code)) {
             wrap.style.display = "none";
             Sync.syncJoinPairing(code).then(r => {
-              if (r.ok) { toast("扫码配对成功，开始实时同步"); renderSettings(); }
-              else { toast("加入失败：" + (r.reason || "未知")); }
+              if (r.ok) { toast(I18n.t("toast_scan_success")); renderSettings(); }
+              else { toast(I18n.t("toast_join_failed", { reason: r.reason || I18n.t("common_unknown") })); }
             });
             return true; // 停止扫描
           }
           return false;
         });
         if (sc && sc.ok) { wrap.style.display = "block"; }
-        else { toast(sc && sc.reason ? sc.reason : "无法打开摄像头"); }
+        else { toast(sc && sc.reason ? sc.reason : I18n.t("toast_scan_open_failed")); }
       } else { wrap.style.display = "none"; if (Sync._scanStop) { Sync._scanStop(); Sync._scanStop = null; } }
       break;
     }
     case "sync-join": {
-      if (typeof Sync === "undefined" || !Sync.enabled) { toast("同步未配置：需先配置 Supabase"); break; }
+      if (typeof Sync === "undefined" || !Sync.enabled) { toast(I18n.t("toast_sync_unconfigured")); break; }
       const inp = el("sync-code-input");
       const code = inp ? inp.value.trim() : "";
-      if (!/^[0-9A-F]{12}$/i.test(code)) { toast("请输入 12 位配对码"); break; }
+      if (!/^[0-9A-F]{12}$/i.test(code)) { toast(I18n.t("toast_enter_code")); break; }
       Sync.syncJoinPairing(code).then(r => {
-        if (r.ok) { toast("配对成功，开始实时同步"); renderSettings(); }
-        else { toast("加入失败：" + (r.reason || "未知")); }
+        if (r.ok) { toast(I18n.t("toast_join_success")); renderSettings(); }
+        else { toast(I18n.t("toast_join_failed", { reason: r.reason || I18n.t("common_unknown") })); }
       });
       break;
     }
     case "sync-disconnect": {
       if (typeof Sync !== "undefined") { Sync.syncDisconnect(); }
       renderSettings();
-      toast("已解除配对");
+      toast(I18n.t("toast_disconnected"));
       break;
     }
     case "export-data": {
@@ -867,8 +891,8 @@ function handle(act, id, btn) {
         document.body.appendChild(a);
         a.click();
         setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 500);
-        toast("已导出备份文件");
-      } catch (e) { toast("导出失败"); }
+        toast(I18n.t("toast_exported"));
+      } catch (e) { toast(I18n.t("toast_export_failed")); }
       break;
     }
     case "import-data": {
@@ -877,11 +901,11 @@ function handle(act, id, btn) {
       break;
     }
     case "reset":
-      if (confirm("确定清空清单、历史和设置？已启用同步时，共享设备也会清空。")) {
+      if (confirm(I18n.t("confirm_reset"))) {
         S = defaultState();
         S.resetId = crypto.randomUUID();
         save(); // Persist an empty backup and send an explicit shared-state deletion.
-        toast("已清空");
+        toast(I18n.t("toast_cleared"));
       }
       break;
   }
@@ -960,7 +984,7 @@ function requestNotify() {
   try {
     if ("Notification" in window) {
       if (Notification.permission === "default") Notification.requestPermission();
-    } else { toast("此浏览器不支持系统通知"); S.settings.notify = false; save(); }
+    } else { toast(I18n.t("toast_notify_unsupported")); S.settings.notify = false; save(); }
   } catch (e) { S.settings.notify = false; save(); }
 }
 
@@ -981,8 +1005,8 @@ function syncApplyRemote(payload) {
 }
 // 全局同步指示器：顶部小圆点 + 最后同步时间（所有页面可见）
 function syncStatusLabel() {
-  if (typeof Sync === "undefined") return "仅保存在本机";
-  return ({off:"未配对", connecting:"连接中", syncing:"正在同步", pending:"有修改待上传", connected:"已同步", reconnecting:"等待联网重试", error:"同步暂不可用"})[Sync.connState] || "未连接";
+  if (typeof Sync === "undefined") return I18n.t("sync_off_unconfigured");
+  return I18n.t(({off:"sync_state_off", connecting:"sync_state_connecting", syncing:"sync_state_syncing", pending:"sync_state_pending", connected:"sync_state_connected", reconnecting:"sync_state_reconnecting", error:"sync_state_error"})[Sync.connState] || "sync_state_unknown");
 }
 function updateSyncIndicator() {
   const ind = el("sync-indicator");
@@ -998,7 +1022,7 @@ function updateSyncIndicator() {
   if (card) {
     card.querySelector(".sync-label").textContent = syncStatusLabel();
     card.querySelector(".sync-error").textContent = Sync.lastError;
-    const members = card.querySelector(".sync-members"); if (members) members.textContent = Sync.members;
+    const members = card.querySelector(".sync-members"); if (members) members.textContent = I18n.t("set_sync_members", { n: Sync.members });
   }
 }
 if (typeof Sync !== "undefined") {
@@ -1013,6 +1037,7 @@ if (typeof Sync !== "undefined") {
 }
 
 function boot() {
+  I18n.applyStatic();
   document.querySelectorAll(".tab").forEach(t => {
     t.addEventListener("click", () => { currentTab = t.dataset.tab; render(); });
   });
@@ -1020,13 +1045,9 @@ function boot() {
   render();
   checkReminders();
   setInterval(() => {
-    // 跨天自动刷新
-    if (el("top-date").textContent.indexOf("今天") < 0 && el("top-date").textContent !== "") {
-      const d = new Date();
-      const wd = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
-      const want = (d.getMonth() + 1) + "月" + d.getDate() + "日 · 周" + wd;
-      if (el("top-date").textContent !== want) { render(); checkReminders(); }
-    }
+    // 跨天自动刷新（日期文案随语言变化，直接比对当前渲染值）
+    const want = I18n.formatTopDate(new Date());
+    if (el("top-date").textContent !== "" && el("top-date").textContent !== want) { render(); checkReminders(); }
     checkReminders();
   }, 60000);
 }

@@ -6,7 +6,7 @@ A small daily task planner built around the **Ivy Lee method**: plan ahead, prio
 
 [Try the Web/PWA demo](https://tacksmith.github.io/sixthings/) · [Download a release](https://github.com/tacksmith/sixthings/releases) · [Deployment guide (中文)](docs/部署与发布.md)
 
-The demo stores your tasks in your browser. It has no shared backend; multi-device sync requires your own Supabase configuration. The app interface is currently **Simplified Chinese**. These two READMEs document the same application.
+The demo stores your tasks in your browser. It has no shared backend; multi-device sync requires your own Supabase configuration. The app interface supports **Simplified Chinese** (default) and **English**; switch it anytime with the **Language · 语言** selector at the top of Settings. The choice is saved on this device only and never touches your tasks or sync data. These two READMEs document the same application.
 
 ## The method
 
@@ -27,9 +27,14 @@ The purpose is to make priorities concrete and reduce task switching. Six Things
 | Inbox and history | Capture interruptions separately; review past tasks in the calendar |
 | Local backups | Browser localStorage plus IndexedDB backup; JSON import/export in Settings |
 | Optional sync | Pair devices with a code or QR code; offline edits retry after reconnection |
+| Interface language | Simplified Chinese by default; English available; switch in Settings, saved on this device only |
 | Web/PWA | Use the same website on desktop, Android, iPhone, and tablets; install to the home screen where supported |
 
 Only the **Web/PWA** edition is maintained. No Android SDK or Xcode is required. Offline use needs an initial successful online load. Reminders are checked while the page is running; background Web Push is not implemented. Export backups before clearing browser data or moving to another website address.
+
+## Interface language
+
+Open **Settings** and use the **Language · 语言** selector at the top to switch between 简体中文 and English. Simplified Chinese is the default, so existing users keep the current language until they choose otherwise. The preference is stored locally on that device in its own key (`sixthings:lang`), separate from task state and sync settings — it survives reloads, offline use, imports, resets, and incoming sync updates, and is never shared with other devices or written into your task data. Page language, title, calendar weekday/month labels, reminders, toasts, confirmations, and pairing instructions all follow your selection.
 
 ## Run locally
 
@@ -125,6 +130,7 @@ backend verification; report unresolved failures instead of declaring sync fixed
 | Path | Purpose |
 |---|---|
 | `www/app.js`, `www/styles.css` | Task behavior, browser storage, and interface |
+| `www/i18n.js` | Explicit zh/en interface dictionary and local language preference |
 | `www/sync-engine.js`, `www/sync.js` | Merge/retry engine and Supabase connection |
 | `www/sw.js`, `www/manifest.webmanifest` | Offline caching and PWA installation |
 | `tests/`, `scripts/` | Regression tests, local server, and build tools |

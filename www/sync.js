@@ -2,7 +2,8 @@
 const SYNC_CONFIG = window.SIXTHINGS_CONFIG || {url:"", anonKey:""};
 const Sync = {
   client:null, enabled:false, uid:null, paired:false, room:null, pairingCode:null,
-  connState:"off", lastSyncAt:0, lastError:"", members:0,
+  connState:"off", lastSyncAt:0, _lastError:null, members:0,
+  get lastError() { return this._lastError ? syncError(this._lastError) : ""; },
   onData:null, onGetData:null, onStateChange:null,
   _engine:null, _channel:null, _pollTimer:null, _pushTimer:null, _retryTimer:null,
   _initializing:null, _operation:null, _generation:0, _controlVersion:0,
@@ -13,19 +14,32 @@ function syncRemember(patch) {
 }
 function syncSetState(state, error) {
   Sync.connState = state;
-  Sync.lastError = error ? syncError(error) : "";
+  Sync._lastError = error || null;
   if (state === "connected") Sync.lastSyncAt = Date.now();
   if (Sync.onStateChange) Sync.onStateChange(state);
 }
 function syncError(error) {
-  if (error.code === "PGRST202" || error.code === "42883") return "同步服务需要升级，请联系维护者";
-  if (error.code === "42501") return "当前设备没有访问权限，请重新配对";
-  if (error.code === "22023") return "配对码无效、已使用或已过期";
-  if (error.name === "QuotaExceededError") return "本机存储空间不足，请立即导出备份";
-  return error.message || "暂时无法连接，内容已保存在本机，联网后重试";
+  if (!error) return I18n.t("sync_error_network");
+  const code = error.code;
+  const key =
+    code === "SYNC_CACHE_FORMAT" ? "sync_engine_cache_format"
+    : code === "SYNC_INVALID_VERSION" ? "sync_engine_invalid_version"
+    : code === "SYNC_ROOM_FORMAT" ? "sync_engine_room_format"
+    : code === "SYNC_IDENTITY" ? "sync_engine_identity"
+    : code === "SYNC_COMPONENTS" ? "sync_engine_components"
+    : code === "SYNC_CLIENT" ? "sync_client_unavailable"
+    : code === "SYNC_CANCELLED" ? "sync_operation_cancelled"
+    : code === "SYNC_NOT_CONFIGURED" ? "sync_not_configured"
+    : (code === "PGRST202" || code === "42883") ? "sync_error_upgrade"
+    : code === "42501" ? "sync_error_permission"
+    : code === "22023" ? "sync_error_code_invalid"
+    : error.name === "QuotaExceededError" ? "sync_error_quota"
+    : null;
+  if (key) return I18n.t(key);
+  return error.message || I18n.t("sync_error_network");
 }
 async function syncRpc(name, parameters) {
-  if (!Sync.client) throw new Error("尚未连接同步服务");
+  if (!Sync.client) { const err = new Error("尚未连接同步服务"); err.code = "SYNC_CLIENT"; throw err; }
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 12000);
   try {
@@ -43,7 +57,7 @@ async function syncEnsureAuth() {
   if (session?.session?.user?.id) { Sync.uid = session.session.user.id; return Sync.uid; }
   const {data, error} = await Sync.client.auth.signInAnonymously();
   if (error) throw error;
-  if (!data?.user?.id) throw new Error("无法取得同步身份");
+  if (!data?.user?.id) { const err = new Error("无法取得同步身份"); err.code = "SYNC_IDENTITY"; throw err; }
   Sync.uid = data.user.id;
   return Sync.uid;
 }
@@ -52,7 +66,7 @@ function syncInit() {
   Sync._initializing = (async () => {
     try {
       if (!SYNC_CONFIG.url || !SYNC_CONFIG.anonKey) { Sync.enabled = false; return false; }
-      if (!window.supabase) throw new Error("同步组件未加载，请刷新页面");
+      if (!window.supabase) { const err = new Error("同步组件未加载，请刷新页面"); err.code = "SYNC_COMPONENTS"; throw err; }
       if (!Sync.client) Sync.client = window.supabase.createClient(SYNC_CONFIG.url, SYNC_CONFIG.anonKey);
       await syncEnsureAuth();
       Sync.enabled = true;
@@ -107,7 +121,7 @@ function syncWatch(room) {
     });
 }
 async function syncStartRoom(room, resume = true) {
-  if (!/^[0-9a-f-]{36}$/i.test(room)) throw new Error("同步空间格式不正确");
+  if (!/^[0-9a-f-]{36}$/i.test(room)) { const err = new Error("同步空间格式不正确"); err.code = "SYNC_ROOM_FORMAT"; throw err; }
   syncStop(); Sync.room = room; Sync.paired = true;
   const generation = Sync._generation;
   syncRemember({protocol:3,room,pairCode:null,pendingCreate:null});
@@ -140,16 +154,16 @@ function syncPush(delay = 200) {
 function syncExclusive(operation) {
   if (Sync._operation) return Sync._operation;
   const version = ++Sync._controlVersion;
-  const guard = () => { if (version !== Sync._controlVersion) throw new Error("操作已取消"); };
+  const guard = () => { if (version !== Sync._controlVersion) { const err = new Error("操作已取消"); err.code = "SYNC_CANCELLED"; throw err; } };
   Sync._operation = operation(guard).catch(error => {
-    if (version !== Sync._controlVersion) return {ok:false,reason:"操作已取消"};
+    if (version !== Sync._controlVersion) return {ok:false,reason:I18n.t("sync_operation_cancelled")};
     syncSetState("error", error); return {ok:false,reason:syncError(error)};
   }).finally(() => { Sync._operation = null; });
   return Sync._operation;
 }
 function syncCreatePairing() {
   return syncExclusive(async guard => {
-    if (!Sync.enabled && !(await syncInit())) throw new Error(Sync.lastError || "同步服务尚未配置");
+    if (!Sync.enabled && !(await syncInit())) { const err = new Error("同步服务尚未配置"); err.code = "SYNC_NOT_CONFIGURED"; throw Sync._lastError || err; }
     guard();
     if (!Sync.room) {
       const room = syncSettings().pendingCreate || crypto.randomUUID();
@@ -167,8 +181,8 @@ function syncCreatePairing() {
 }
 function syncJoinPairing(code) {
   return syncExclusive(async guard => {
-    if (!/^[0-9a-f]{12}$/i.test(code.trim())) return {ok:false,reason:"请输入完整的12位配对码"};
-    if (!Sync.enabled && !(await syncInit())) throw new Error(Sync.lastError || "同步服务尚未配置");
+    if (!/^[0-9a-f]{12}$/i.test(code.trim())) return {ok:false,reason:I18n.t("sync_reason_code_format")};
+    if (!Sync.enabled && !(await syncInit())) { const err = new Error("同步服务尚未配置"); err.code = "SYNC_NOT_CONFIGURED"; throw Sync._lastError || err; }
     guard();
     const result = await syncRpc("six_join_room", {p_code:code.trim().toUpperCase()});
     guard();
@@ -228,7 +242,7 @@ function syncRenderQR(containerEl, code) {
 function syncStartScanner(videoEl, onFound) {
   try {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.jsQR) {
-      return { ok: false, reason: "设备不支持摄像头或缺少 jsQR" };
+      return { ok: false, reason: I18n.t("sync_scan_no_camera") };
     }
     let stopped = false;
     let stream = null;
@@ -253,7 +267,10 @@ function syncStartScanner(videoEl, onFound) {
       } catch (e) { console.warn("[sync] scan err:", e.message); stop(); }
     };
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-      .then(s => { stream = s; videoEl.srcObject = s; videoEl.play().then(scan).catch(() => {}); })
+      .then(s => {
+        if (stopped) { s.getTracks().forEach(track => track.stop()); return; }
+        stream = s; videoEl.srcObject = s; videoEl.play().then(scan).catch(() => {});
+      })
       .catch(err => { console.warn("[sync] camera err:", err.message); });
     Sync._scanStop = stop;
     return { ok: true, stop };

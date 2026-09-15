@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="六件事" />
-  <link rel="stylesheet" href="styles.css?v=20260915d" />
+  <link rel="stylesheet" href="styles.css?v=20260915e" />
 </head>
 <body>
   <div id="app">
@@ -20,10 +20,10 @@
       <div class="topbar-inner">
         <div id="brand">
           <span class="brand-mark">6</span>
-          <span class="brand-name">六件事</span>
+          <span class="brand-name" data-i18n="app_brand">六件事</span>
         </div>
         <div id="top-date" class="top-date"></div>
-        <div id="sync-indicator" class="sync-indicator" data-act="goto-settings" title="多端同步状态" style="display:none">
+        <div id="sync-indicator" class="sync-indicator" data-act="goto-settings" data-i18n-title="sync_status_title" title="多端同步状态" style="display:none">
           <span id="sync-ind-dot" class="sync-ind-dot" style="background:#999"></span>
           <span id="sync-ind-time" class="sync-ind-time"></span>
         </div>
@@ -33,10 +33,10 @@
     <main id="screen"></main>
 
     <nav id="tabbar">
-      <button class="tab" data-tab="today"><span class="tab-icon">▶</span><span class="tab-label">今日</span></button>
-      <button class="tab" data-tab="plan"><span class="tab-icon">✎</span><span class="tab-label">规划</span></button>
-      <button class="tab" data-tab="history"><span class="tab-icon">🔥</span><span class="tab-label">坚持</span></button>
-      <button class="tab" data-tab="settings"><span class="tab-icon">⚙</span><span class="tab-label">设置</span></button>
+      <button class="tab" data-tab="today"><span class="tab-icon">▶</span><span class="tab-label" data-i18n="tab_today">今日</span></button>
+      <button class="tab" data-tab="plan"><span class="tab-icon">✎</span><span class="tab-label" data-i18n="tab_plan">规划</span></button>
+      <button class="tab" data-tab="history"><span class="tab-icon">🔥</span><span class="tab-label" data-i18n="tab_history">坚持</span></button>
+      <button class="tab" data-tab="settings"><span class="tab-icon">⚙</span><span class="tab-label" data-i18n="tab_settings">设置</span></button>
     </nav>
 
     <div id="toast" class="toast" hidden></div>
@@ -46,8 +46,9 @@
   <script src="vendor/jsqr.js"></script>
   <script src="vendor/supabase.umd.js"></script>
   <script src="config.js"></script>
-  <script src="sync-engine.js?v=20260915d"></script>
-  <script src="sync.js?v=20260915d"></script>
-  <script src="app.js?v=20260915d"></script>
+  <script src="i18n.js?v=20260915e"></script>
+  <script src="sync-engine.js?v=20260915e"></script>
+  <script src="sync.js?v=20260915e"></script>
+  <script src="app.js?v=20260915e"></script>
 </body>
 </html>
