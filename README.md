@@ -72,17 +72,9 @@ Upload **only `dist/`** to an HTTPS static host. `npm run build` reads optional 
 ### Copy this prompt to an AI Agent
 
 ```text
-Repository: https://github.com/tacksmith/sixthings
-Clone or open this repository before following the instructions below.
-Deploy this repository as a local-only Web/PWA on my GitHub Pages.
-Read AGENTS.md, README.md, .github/workflows/pages.yml, and the deployment guide first.
-Verify the authenticated GitHub account, target repository, branch, and Pages permissions.
-Run npm run check and npm test; after both pass, build with SIXTHINGS_SUPABASE_URL and
-SIXTHINGS_SUPABASE_ANON_KEY explicitly empty. Publish only dist/ using the included workflow.
-Keep the PWA working under the repository subpath. Verify the live URL, manifest,
-asset loading, task persistence after reload, and offline reopening in a fresh test profile.
-Do not change repository visibility or connect an existing production database.
-Report the account/repository, working URL, and any checks you could not complete.
+Project: https://github.com/tacksmith/sixthings
+Deploy it to my GitHub Pages as a Web/PWA that needs no backend.
+Verify online access, task persistence, and offline use. Report the site URL and results.
 ```
 
 ## Enable multi-device sync (optional)
@@ -100,19 +92,9 @@ Concurrent edits to different tasks or fields are merged where possible. Deletio
 ### Copy this prompt to an AI Agent
 
 ```text
-Repository: https://github.com/tacksmith/sixthings
-Clone or open this repository before following the instructions below.
-Enable and verify multi-device sync for my Six Things deployment.
-Read AGENTS.md, the deployment guide, sync design, and v3 SQL migration first.
-Confirm which Supabase project I intend to use; preserve existing data and prepare
-backups before applying a migration. Enable anonymous sign-ins and configure only
-public browser credentials through ignored .env.local or deployment variables.
-Never commit private credentials or reuse the upstream maintainer's backend.
-Run npm run check, npm test, and npm run test:db when PostgreSQL tools are available.
-Use two isolated browser profiles with synthetic data to verify pairing, independent
-edits, deletion, offline editing plus reload/reconnection, and expired/reused invitations.
-Use a fresh invitation for a third profile. Distinguish local test results from live
-backend verification; report unresolved failures instead of declaring sync fixed.
+Project: https://github.com/tacksmith/sixthings
+Set up multi-device sync using my own Supabase project, preserving existing data.
+Verify device pairing, edits across devices, and sync after reconnecting. Report results and unresolved issues.
 ```
 
 ## Development
@@ -139,15 +121,9 @@ backend verification; report unresolved failures instead of declaring sync fixed
 ### Copy this prompt to an AI Agent
 
 ```text
-Repository: https://github.com/tacksmith/sixthings
-Clone or open this repository before following the instructions below.
-Implement [describe the feature or bug] in this repository.
-Read AGENTS.md and both READMEs; inspect the relevant implementation and tests first.
-Keep the project a standalone Web/PWA. For sync changes, preserve offline retries
-and conflict handling, and verify the behavior using isolated test data.
-Run the relevant checks; keep app, HTML, and service-worker release versions aligned
-when shipping changed assets. Update both READMEs if usage or deployment changes.
-Report the behavior changed, verification performed, and any remaining limitation.
+Project: https://github.com/tacksmith/sixthings
+Implement [describe the feature or bug], keeping the project a Web/PWA.
+Run the necessary tests, update relevant documentation, and summarize changes and results.
 ```
 
 ## License

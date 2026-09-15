@@ -72,17 +72,9 @@ npm run build
 ### 给 AI Agent 的部署提示词
 
 ```text
-项目完整链接：https://github.com/tacksmith/sixthings
-请先克隆或打开此仓库，再执行下面的任务。
-请把本仓库以单机 Web/PWA 形式部署到我的 GitHub Pages。
-先阅读 AGENTS.md、README.zh-CN.md、.github/workflows/pages.yml 和部署指南。
-核对已登录的 GitHub 账号、目标仓库、分支及 Pages 权限。
-运行 npm run check 和 npm test，通过后再构建；构建时明确将 SIXTHINGS_SUPABASE_URL 与
-SIXTHINGS_SUPABASE_ANON_KEY 都设为空，使用已有工作流，只发布 dist/。
-保持仓库子路径下的 PWA 可用，并在独立测试环境验证线上地址、manifest、
-静态资源、任务刷新后保留以及离线重新打开。
-不要改变仓库可见性或连接已有生产数据库。
-最后简要报告账号与仓库、可用网址，以及未能完成的检查。
+项目：https://github.com/tacksmith/sixthings
+请将它部署到我的 GitHub Pages，作为无需后端的 Web/PWA。
+验证在线访问、任务保存和离线使用，最后给我网站地址和验证结果。
 ```
 
 ## 开启多设备同步（可选）
@@ -100,17 +92,9 @@ SIXTHINGS_SUPABASE_ANON_KEY 都设为空，使用已有工作流，只发布 dis
 ### 给 AI Agent 的同步提示词
 
 ```text
-项目完整链接：https://github.com/tacksmith/sixthings
-请先克隆或打开此仓库，再执行下面的任务。
-请为我的 Six Things 部署配置并验证多设备同步。
-先阅读 AGENTS.md、部署指南、同步方案和 v3 SQL 脚本。
-确认我要使用的 Supabase 项目；迁移前保留现有数据并准备备份。
-启用匿名登录，只通过被忽略的 .env.local 或部署变量配置浏览器公开凭据。
-不要提交私密凭据，也不要复用原作者的后端。
-运行 npm run check、npm test；PostgreSQL 工具可用时运行 npm run test:db。
-使用两个独立浏览器环境和测试数据，验证配对、分别编辑、删除、离线修改后
-刷新与重连、过期及重复使用的邀请；第三台设备使用新邀请测试。
-区分本地测试与真实后端验证结果，有失败如实报告，不能仅凭前端上线宣布同步已解决。
+项目：https://github.com/tacksmith/sixthings
+请用我自己的 Supabase 项目配置多设备同步，保留已有数据。
+验证设备配对、跨设备修改和离线重连后的同步，简述结果及未解决的问题。
 ```
 
 ## 开发与贡献
@@ -137,14 +121,9 @@ SIXTHINGS_SUPABASE_ANON_KEY 都设为空，使用已有工作流，只发布 dis
 ### 给 AI Agent 的开发提示词
 
 ```text
-项目完整链接：https://github.com/tacksmith/sixthings
-请先克隆或打开此仓库，再执行下面的任务。
-请在本仓库实现：[描述功能或问题]。
-先阅读 AGENTS.md 和中英文 README，检查相关实现及已有测试。
-保持独立 Web/PWA 架构；涉及同步时保留离线重试和冲突处理，并使用隔离测试数据验证。
-执行相关检查；发布修改后的资源时，同步更新应用、HTML 和 Service Worker 版本。
-用法或部署方式有变化时，同时更新两份 README。
-最后简述行为变化、验证结果和剩余限制。
+项目：https://github.com/tacksmith/sixthings
+请实现：[描述功能或问题]，保持 Web/PWA 形式。
+完成必要测试并更新相关文档，简述改动和验证结果。
 ```
 
 ## 许可证
