@@ -6,7 +6,7 @@ A small daily task planner built around the **Ivy Lee method**: plan ahead, prio
 
 [Try the Web/PWA demo](https://tacksmith.github.io/sixthings/) · [Download a release](https://github.com/tacksmith/sixthings/releases) · [Deployment guide (中文)](docs/部署与发布.md)
 
-The demo stores your tasks in your browser. It has no shared backend; multi-device sync requires your own Supabase configuration. The app interface supports **Simplified Chinese** (default) and **English**; switch it anytime with the **Language · 语言** selector at the top of Settings. The choice is saved on this device only and never touches your tasks or sync data. These two READMEs document the same application.
+The demo stores your tasks in your browser. It has no shared backend; multi-device sync requires your own Supabase configuration. The interface supports **Simplified Chinese** (default) and **English**.
 
 ## The method
 
@@ -34,7 +34,7 @@ Only the **Web/PWA** edition is maintained. No Android SDK or Xcode is required.
 
 ## Interface language
 
-Open **Settings** and use the **Language · 语言** selector at the top to switch between 简体中文 and English. Simplified Chinese is the default, so existing users keep the current language until they choose otherwise. The preference is stored locally on that device in its own key (`sixthings:lang`), separate from task state and sync settings — it survives reloads, offline use, imports, resets, and incoming sync updates, and is never shared with other devices or written into your task data. Page language, title, calendar weekday/month labels, reminders, toasts, confirmations, and pairing instructions all follow your selection.
+Open **Settings** and use the **Language · 语言** selector at the top. Your choice applies to the interface, calendar, reminders, and messages. It stays on this device and is preserved through reloads, offline use, task imports, resets, and sync updates. Changing language does not change your tasks.
 
 ## Run locally
 
@@ -57,7 +57,7 @@ Open `http://localhost:8080`. Leave sync configuration empty for local-only use.
 3. Under **Actions → Deploy Web/PWA demo**, select **Run workflow** on `main`.
 4. Once deployment succeeds, open the website URL shown in that workflow.
 
-Later pushes to `main` run checks, build the site, and deploy automatically. The included workflow deliberately sets both Supabase variables to empty. It publishes a local-only demo, including when repository variables have been configured. Root domains and `/repository-name/` paths are supported.
+Later pushes to `main` run checks, build the site, and deploy automatically. The included workflow explicitly leaves `SIXTHINGS_SUPABASE_URL` and `SIXTHINGS_SUPABASE_ANON_KEY` empty. It publishes a local-only demo, including when repository variables have been configured. Root domains and `/repository-name/` paths are supported.
 
 ### Other static hosts
 
@@ -77,7 +77,7 @@ Clone or open this repository before following the instructions below.
 Deploy this repository as a local-only Web/PWA on my GitHub Pages.
 Read AGENTS.md, README.md, .github/workflows/pages.yml, and the deployment guide first.
 Verify the authenticated GitHub account, target repository, branch, and Pages permissions.
-Run the checks and tests, then build with BOTH SIXTHINGS_SUPABASE_URL and
+Run npm run check and npm test; after both pass, build with SIXTHINGS_SUPABASE_URL and
 SIXTHINGS_SUPABASE_ANON_KEY explicitly empty. Publish only dist/ using the included workflow.
 Keep the PWA working under the repository subpath. Verify the live URL, manifest,
 asset loading, task persistence after reload, and offline reopening in a fresh test profile.

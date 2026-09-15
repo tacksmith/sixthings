@@ -6,7 +6,7 @@
 
 [体验 Web/PWA 演示站](https://tacksmith.github.io/sixthings/) · [下载发行版](https://github.com/tacksmith/sixthings/releases) · [部署指南](docs/部署与发布.md)
 
-演示站将任务保存在你自己的浏览器中，没有共享后端；多设备同步需要配置自己的 Supabase。应用界面支持**简体中文**（默认）与**英文**，可在设置页顶部的「语言 · Language」随时切换；选择仅保存在本机，不写入任务或同步数据。两份 README 介绍的是同一款应用。
+演示站将任务保存在你自己的浏览器中，没有共享后端；多设备同步需要配置自己的 Supabase。应用界面支持**简体中文**（默认）与**英文**。
 
 ## 方法：每天只关注最重要的几件事
 
@@ -34,7 +34,7 @@
 
 ## 界面语言
 
-打开「设置」，使用顶部的「语言 · Language」选择器即可在 简体中文 与 English 之间切换。默认简体中文，因此老用户在没有手动选择前会保持原有语言。该选择保存在设备本机独立的偏好 key（`sixthings:lang`）中，与任务状态和同步设置分离——刷新、离线、导入、重置以及收到远端同步数据都不会改变它，也不会同步到其他设备或写入任务数据。页面语言、标题、日历星期与月份、提醒、提示、确认框与配对说明都会跟随所选语言。
+打开「设置」，使用顶部的「语言 · Language」选择器切换语言。界面、日历、提醒和提示信息会随之切换。选择仅保存在本机，刷新、离线使用、导入任务、重置及同步更新后仍会保留；切换语言不会修改任务。
 
 ## 本地运行
 
@@ -57,7 +57,7 @@ npm run serve
 3. 打开 **Actions → Deploy Web/PWA demo**，在 `main` 分支点击 **Run workflow**。
 4. 部署成功后，打开该工作流显示的网站地址。
 
-此后推送到 `main` 会自动检查、构建并部署。自带工作流明确将两个 Supabase 变量设为空，默认发布单机演示版；仅添加仓库变量不会自动开启同步。网站支持域名根目录和 `/仓库名/` 子路径。
+此后推送到 `main` 会自动检查、构建并部署。自带工作流明确将 `SIXTHINGS_SUPABASE_URL` 与 `SIXTHINGS_SUPABASE_ANON_KEY` 设为空，默认发布单机演示版；仅添加仓库变量不会自动开启同步。网站支持域名根目录和 `/仓库名/` 子路径。
 
 ### 其他静态托管平台
 
@@ -77,7 +77,7 @@ npm run build
 请把本仓库以单机 Web/PWA 形式部署到我的 GitHub Pages。
 先阅读 AGENTS.md、README.zh-CN.md、.github/workflows/pages.yml 和部署指南。
 核对已登录的 GitHub 账号、目标仓库、分支及 Pages 权限。
-执行检查和测试；构建时明确将 SIXTHINGS_SUPABASE_URL 与
+运行 npm run check 和 npm test，通过后再构建；构建时明确将 SIXTHINGS_SUPABASE_URL 与
 SIXTHINGS_SUPABASE_ANON_KEY 都设为空，使用已有工作流，只发布 dist/。
 保持仓库子路径下的 PWA 可用，并在独立测试环境验证线上地址、manifest、
 静态资源、任务刷新后保留以及离线重新打开。
