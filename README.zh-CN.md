@@ -67,6 +67,8 @@ npm run build
 ### 给 AI Agent 的部署提示词
 
 ```text
+项目完整链接：https://github.com/tacksmith/sixthings
+请先克隆或打开此仓库，再执行下面的任务。
 请把本仓库以单机 Web/PWA 形式部署到我的 GitHub Pages。
 先阅读 AGENTS.md、README.zh-CN.md、.github/workflows/pages.yml 和部署指南。
 核对已登录的 GitHub 账号、目标仓库、分支及 Pages 权限。
@@ -93,6 +95,8 @@ SIXTHINGS_SUPABASE_ANON_KEY 都设为空，使用已有工作流，只发布 dis
 ### 给 AI Agent 的同步提示词
 
 ```text
+项目完整链接：https://github.com/tacksmith/sixthings
+请先克隆或打开此仓库，再执行下面的任务。
 请为我的 Six Things 部署配置并验证多设备同步。
 先阅读 AGENTS.md、部署指南、同步方案和 v3 SQL 脚本。
 确认我要使用的 Supabase 项目；迁移前保留现有数据并准备备份。
@@ -127,6 +131,8 @@ SIXTHINGS_SUPABASE_ANON_KEY 都设为空，使用已有工作流，只发布 dis
 ### 给 AI Agent 的开发提示词
 
 ```text
+项目完整链接：https://github.com/tacksmith/sixthings
+请先克隆或打开此仓库，再执行下面的任务。
 请在本仓库实现：[描述功能或问题]。
 先阅读 AGENTS.md 和中英文 README，检查相关实现及已有测试。
 保持独立 Web/PWA 架构；涉及同步时保留离线重试和冲突处理，并使用隔离测试数据验证。

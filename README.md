@@ -67,6 +67,8 @@ Upload **only `dist/`** to an HTTPS static host. `npm run build` reads optional 
 ### Copy this prompt to an AI Agent
 
 ```text
+Repository: https://github.com/tacksmith/sixthings
+Clone or open this repository before following the instructions below.
 Deploy this repository as a local-only Web/PWA on my GitHub Pages.
 Read AGENTS.md, README.md, .github/workflows/pages.yml, and the deployment guide first.
 Verify the authenticated GitHub account, target repository, branch, and Pages permissions.
@@ -93,6 +95,8 @@ Concurrent edits to different tasks or fields are merged where possible. Deletio
 ### Copy this prompt to an AI Agent
 
 ```text
+Repository: https://github.com/tacksmith/sixthings
+Clone or open this repository before following the instructions below.
 Enable and verify multi-device sync for my Six Things deployment.
 Read AGENTS.md, the deployment guide, sync design, and v3 SQL migration first.
 Confirm which Supabase project I intend to use; preserve existing data and prepare
@@ -129,6 +133,8 @@ backend verification; report unresolved failures instead of declaring sync fixed
 ### Copy this prompt to an AI Agent
 
 ```text
+Repository: https://github.com/tacksmith/sixthings
+Clone or open this repository before following the instructions below.
 Implement [describe the feature or bug] in this repository.
 Read AGENTS.md and both READMEs; inspect the relevant implementation and tests first.
 Keep the project a standalone Web/PWA. For sync changes, preserve offline retries
