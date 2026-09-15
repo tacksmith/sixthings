@@ -1,59 +1,143 @@
-# 六件事 · Six Things
+# Six Things · 六件事
 
-践行 Ivy Lee 法的 Web/PWA 清单：提前规划、按顺序执行、未完成顺延。电脑、安卓手机、iPhone 和平板使用同一个网站，可添加到主屏幕并离线使用。
+**English** | [简体中文](README.zh-CN.md)
 
-## 本地运行
+A small daily task planner built around the **Ivy Lee method**: plan ahead, prioritize a short list, work through it in order, and carry unfinished tasks forward.
 
-需要 Node.js 22 或更新版本，无需 Android SDK、Xcode 或 npm 运行时依赖。
+[Try the Web/PWA demo](https://tacksmith.github.io/sixthings/) · [Download a release](https://github.com/tacksmith/sixthings/releases) · [Deployment guide (中文)](docs/部署与发布.md)
+
+The demo stores your tasks in your browser. It has no shared backend; multi-device sync requires your own Supabase configuration. The app interface is currently **Simplified Chinese**. These two READMEs document the same application.
+
+## The method
+
+Follow this four-step routine:
+
+1. Before ending your day, choose up to six important tasks for tomorrow.
+2. Rank them by importance, placing the most important first.
+3. Work on the first task before moving to the next.
+4. Carry unfinished tasks forward and review their priority again.
+
+The purpose is to make priorities concrete and reduce task switching. Six Things lets you choose a daily limit of **3–6**. An inbox and an optional skip setting help with interruptions; the method is a working habit, not a promise of specific results.
+
+## What you can do
+
+| Feature | Behavior |
+|---|---|
+| Daily planning | Prioritized tasks, sequential focus, optional skipping, and unfinished-task carryover |
+| Inbox and history | Capture interruptions separately; review past tasks in the calendar |
+| Local backups | Browser localStorage plus IndexedDB backup; JSON import/export in Settings |
+| Optional sync | Pair devices with a code or QR code; offline edits retry after reconnection |
+| Web/PWA | Use the same website on desktop, Android, iPhone, and tablets; install to the home screen where supported |
+
+Only the **Web/PWA** edition is maintained. No Android SDK or Xcode is required. Offline use needs an initial successful online load. Reminders are checked while the page is running; background Web Push is not implemented. Export backups before clearing browser data or moving to another website address.
+
+## Run locally
+
+Use **Node.js 22+**. No npm dependency installation is needed.
 
 ```sh
+git clone https://github.com/tacksmith/sixthings.git
+cd sixthings
 npm run serve
 ```
 
-打开 `http://localhost:8080`。未配置同步服务时，清单保存在当前浏览器的 localStorage 与 IndexedDB；可在设置中导出 JSON 备份。系统提醒目前只在页面运行时检查，不包含关闭页面后的 Web Push。
+Open `http://localhost:8080`. Leave sync configuration empty for local-only use.
 
-## 开启多设备同步
+## Deploy your own website
 
-1. 在自己的 Supabase 项目中启用匿名登录。
-2. 执行 [v3 数据库脚本](docs/supabase-schema-v3.sql)。新项目直接执行；已有 v2 项目也执行同一脚本。
-3. 复制 `.env.example` 为 `.env.local`，填入 Project URL 和 publishable/anon key。不要填写 service-role key。
-4. 重启本地服务，或重新构建并部署。
-5. 一台设备打开设置生成配对码，其他设备输入或扫码加入；添加第三台设备时生成一个新码。
+### GitHub Pages
 
-配对码为 12 位，10 分钟有效，一次性使用。发起端立即进入共享空间；实时通知不可用时仍会轮询。离线修改会连同同步进度保存在本机，联网后自动重试。
+1. Fork this repository and enable Actions in your fork.
+2. In **Settings → Pages → Build and deployment**, choose **GitHub Actions**.
+3. Under **Actions → Deploy Web/PWA demo**, select **Run workflow** on `main`.
+4. Once deployment succeeds, open the website URL shown in that workflow.
 
-### 冲突约定
+Later pushes to `main` run checks, build the site, and deploy automatically. The included workflow deliberately sets both Supabase variables to empty. It publishes a local-only demo, including when repository variables have been configured. Root domains and `/repository-name/` paths are supported.
 
-- 不同任务、不同字段的修改尽量合并。
-- 删除优先于同一任务的离线编辑，避免已删除内容复活。
-- 同一字段同时修改，以后成功提交的值为准，不依赖设备时钟。
-- 「清空所有数据」也会清空共享内容；系统通知许可与通知记录仅属于本机。
-
-## 检查与构建
+### Other static hosts
 
 ```sh
-npm run check    # JavaScript 语法、静态资源及版本一致性
-npm test         # 同步状态、离线重试与应用接口回归
-npm run test:db  # 独立 PostgreSQL 事务与权限测试；需安装 PostgreSQL 工具
-npm run build   # 生成 dist/，仅将此目录部署为网站
+npm run check
+npm test
+npm run build
 ```
 
-`test:db` 自动创建临时数据库并在结束后关闭、清理，不连接现有数据库。测试方案及验证范围见 [同步方案](docs/同步方案与验证.md)。
+Upload **only `dist/`** to an HTTPS static host. `npm run build` reads optional configuration from environment variables or ignored `.env.local`; do not upload the repository root. See the [deployment guide](docs/部署与发布.md) for configuration and upgrade details.
 
-## 目录
+### Copy this prompt to an AI Agent
 
-| 路径 | 用途 |
+```text
+Deploy this repository as a local-only Web/PWA on my GitHub Pages.
+Read AGENTS.md, README.md, .github/workflows/pages.yml, and the deployment guide first.
+Verify the authenticated GitHub account, target repository, branch, and Pages permissions.
+Run the checks and tests, then build with BOTH SIXTHINGS_SUPABASE_URL and
+SIXTHINGS_SUPABASE_ANON_KEY explicitly empty. Publish only dist/ using the included workflow.
+Keep the PWA working under the repository subpath. Verify the live URL, manifest,
+asset loading, task persistence after reload, and offline reopening in a fresh test profile.
+Do not change repository visibility or connect an existing production database.
+Report the account/repository, working URL, and any checks you could not complete.
+```
+
+## Enable multi-device sync (optional)
+
+1. Create your own Supabase project and enable **anonymous sign-ins**.
+2. Run [supabase-schema-v3.sql](docs/supabase-schema-v3.sql). Back up an existing installation before upgrading; follow the [migration order](docs/部署与发布.md#同步-v3-升级顺序).
+3. Copy `.env.example` to `.env.local` and set your project URL and **publishable/anon key**. Never use a secret or service-role key in a browser build.
+4. Restart the local server, or rebuild and deploy. For GitHub Pages, replace the workflow's two empty values with your own GitHub Actions configuration, for example `${{ vars.SIXTHINGS_SUPABASE_URL }}` and `${{ vars.SIXTHINGS_SUPABASE_ANON_KEY }}`.
+5. Open **设置 (Settings)** on one device to create an invitation. Enter or scan it on another; generate a new invitation for each additional device.
+
+Codes have 12 characters, expire after 10 minutes, and can be used once. Pairing joins a shared room. Realtime notifications are backed by polling; pending changes and sync progress persist locally for retries.
+
+Concurrent edits to different tasks or fields are merged where possible. Deletion wins over an offline edit to the same task; conflicting edits to the same field use the value committed later. **Resetting all data also clears shared content.** Notification permission and delivery records stay local to each device. See [sync design and validation (中文)](docs/同步方案与验证.md).
+
+### Copy this prompt to an AI Agent
+
+```text
+Enable and verify multi-device sync for my Six Things deployment.
+Read AGENTS.md, the deployment guide, sync design, and v3 SQL migration first.
+Confirm which Supabase project I intend to use; preserve existing data and prepare
+backups before applying a migration. Enable anonymous sign-ins and configure only
+public browser credentials through ignored .env.local or deployment variables.
+Never commit private credentials or reuse the upstream maintainer's backend.
+Run npm run check, npm test, and npm run test:db when PostgreSQL tools are available.
+Use two isolated browser profiles with synthetic data to verify pairing, independent
+edits, deletion, offline editing plus reload/reconnection, and expired/reused invitations.
+Use a fresh invitation for a third profile. Distinguish local test results from live
+backend verification; report unresolved failures instead of declaring sync fixed.
+```
+
+## Development
+
+| Command | Purpose |
 |---|---|
-| `www/` | 页面、样式、业务逻辑、PWA 缓存、图标与浏览器库 |
-| `www/sync-engine.js` | 独立的合并与持久化重试模块 |
-| `www/sync.js` | Supabase 身份、配对、轮询与同步连接 |
-| `tests/`、`scripts/` | 回归测试、本地运行、构建工具 |
-| `docs/` | 数据库脚本、发布说明、同步设计与方法介绍 |
+| `npm run serve` | Local web server on port 8080 |
+| `npm run check` | JavaScript syntax, asset references, and release versions |
+| `npm test` | Node regressions for sync, application interfaces, and the PWA |
+| `npm run test:db` | Isolated temporary PostgreSQL transaction/permission tests; requires `initdb`, `pg_ctl`, and `psql` |
+| `npm run build` | Clean and regenerate the deployable `dist/` directory |
 
-Android/iOS 工程不再参与构建；历史源码仍可从 Git 历史恢复。本机原生备份及发布凭据不属于仓库内容。
+`test:db` does not connect to your existing database. There is no numerical coverage target. See [AGENTS.md](AGENTS.md) for contribution conventions.
 
-## 发布与许可
+| Path | Purpose |
+|---|---|
+| `www/app.js`, `www/styles.css` | Task behavior, browser storage, and interface |
+| `www/sync-engine.js`, `www/sync.js` | Merge/retry engine and Supabase connection |
+| `www/sw.js`, `www/manifest.webmanifest` | Offline caching and PWA installation |
+| `tests/`, `scripts/` | Regression tests, local server, and build tools |
+| `docs/`, `www/vendor/` | Deployment/SQL documentation and bundled browser libraries/licenses |
 
-部署步骤见 [部署与发布](docs/部署与发布.md)。公开仓库不等于开放线上数据库访问：每个自部署实例应使用自己的后端配置。
+### Copy this prompt to an AI Agent
 
-本项目自有代码采用 [MIT 许可证](LICENSE)，允许使用、修改、商用和再分发，须保留版权与许可声明。第三方库继续适用各自许可证，见 [第三方声明](www/vendor/README.md)。
+```text
+Implement [describe the feature or bug] in this repository.
+Read AGENTS.md and both READMEs; inspect the relevant implementation and tests first.
+Keep the project a standalone Web/PWA. For sync changes, preserve offline retries
+and conflict handling, and verify the behavior using isolated test data.
+Run the relevant checks; keep app, HTML, and service-worker release versions aligned
+when shipping changed assets. Update both READMEs if usage or deployment changes.
+Report the behavior changed, verification performed, and any remaining limitation.
+```
+
+## License
+
+Project code is licensed under [MIT](LICENSE), including permission for commercial use, subject to retaining the copyright and license notice. Bundled libraries retain their own licenses; see [third-party notices](www/vendor/README.md).

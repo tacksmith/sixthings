@@ -1,7 +1,9 @@
 /* Service Worker：离线缓存 + stale-while-revalidate（先回缓存，后台更新，保证发版后能拿到新版） */
-const CACHE = "sixthings-v3-20260915c";
+const SCOPE = new URL(self.registration.scope);
+const CACHE_PREFIX = "sixthings-v3:" + SCOPE.pathname + ":";
+const CACHE = CACHE_PREFIX + "20260915d";
 const ASSETS = [
-  "./", "./index.html", "./styles.css?v=20260915c", "./app.js?v=20260915c", "./sync.js?v=20260915c", "./sync-engine.js?v=20260915c", "./config.js",
+  "./", "./index.html", "./styles.css?v=20260915d", "./app.js?v=20260915d", "./sync.js?v=20260915d", "./sync-engine.js?v=20260915d", "./config.js",
   "./manifest.webmanifest",
   "./vendor/supabase.umd.js", "./vendor/qrcode.min.js", "./vendor/jsqr.js",
   "./icons/icon-192.png", "./icons/icon-512.png"
@@ -13,14 +15,14 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin) return; // 不拦截跨域
+  if (url.origin !== SCOPE.origin || !url.pathname.startsWith(SCOPE.pathname)) return;
   const isNav = e.request.mode === "navigate";
   // 规范化缓存 key：仅忽略 ?t= 防缓存时间戳（每次访问都不同，会导致缓存无限膨胀）。
   // 注意：绝不能忽略 ?v= 版本号 —— index.html 用 ?v= 加载 app.js/sync.js/styles.css，
