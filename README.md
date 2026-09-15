@@ -4,7 +4,7 @@
 
 A small daily task planner built around the **Ivy Lee method**: plan ahead, prioritize a short list, work through it in order, and carry unfinished tasks forward.
 
-[Try the Web/PWA demo](https://tacksmith.github.io/sixthings/) · [Download a release](https://github.com/tacksmith/sixthings/releases) · [Deployment guide (中文)](docs/部署与发布.md)
+[Try the Web/PWA demo](https://tacksmith.github.io/sixthings/) · [Download a release](https://github.com/tacksmith/sixthings/releases) · [Deployment guide](docs/deployment.md)
 
 The demo stores your tasks in your browser. It has no shared backend; multi-device sync requires your own Supabase configuration. The interface supports **Simplified Chinese** (default) and **English**.
 
@@ -67,7 +67,7 @@ npm test
 npm run build
 ```
 
-Upload **only `dist/`** to an HTTPS static host. `npm run build` reads optional configuration from environment variables or ignored `.env.local`; do not upload the repository root. See the [deployment guide](docs/部署与发布.md) for configuration and upgrade details.
+Upload **only `dist/`** to an HTTPS static host. `npm run build` reads optional configuration from environment variables or ignored `.env.local`; do not upload the repository root. See the [deployment guide](docs/deployment.md) for configuration and upgrade details.
 
 ### Copy this prompt to an AI Agent
 
@@ -80,14 +80,14 @@ Verify online access, task persistence, and offline use. Report the site URL and
 ## Enable multi-device sync (optional)
 
 1. Create your own Supabase project and enable **anonymous sign-ins**.
-2. Run [supabase-schema-v3.sql](docs/supabase-schema-v3.sql). Back up an existing installation before upgrading; follow the [migration order](docs/部署与发布.md#同步-v3-升级顺序).
+2. Run [supabase-schema-v3.sql](docs/supabase-schema-v3.sql). Back up an existing installation before upgrading; follow the [migration order](docs/deployment.md#sync-v3-upgrade-order).
 3. Copy `.env.example` to `.env.local` and set your project URL and **publishable/anon key**. Never use a secret or service-role key in a browser build.
 4. Restart the local server, or rebuild and deploy. For GitHub Pages, replace the workflow's two empty values with your own GitHub Actions configuration, for example `${{ vars.SIXTHINGS_SUPABASE_URL }}` and `${{ vars.SIXTHINGS_SUPABASE_ANON_KEY }}`.
 5. Open **设置 (Settings)** on one device to create an invitation. Enter or scan it on another; generate a new invitation for each additional device.
 
 Codes have 12 characters, expire after 10 minutes, and can be used once. Pairing joins a shared room. Realtime notifications are backed by polling; pending changes and sync progress persist locally for retries.
 
-Concurrent edits to different tasks or fields are merged where possible. Deletion wins over an offline edit to the same task; conflicting edits to the same field use the value committed later. **Resetting all data also clears shared content.** Notification permission and delivery records stay local to each device. See [sync design and validation (中文)](docs/同步方案与验证.md).
+Concurrent edits to different tasks or fields are merged where possible. Deletion wins over an offline edit to the same task; conflicting edits to the same field use the value committed later. **Resetting all data also clears shared content.** Notification permission and delivery records stay local to each device. See [sync design and validation](docs/sync-design.md).
 
 ### Copy this prompt to an AI Agent
 
@@ -96,6 +96,10 @@ Project: https://github.com/tacksmith/sixthings
 Set up multi-device sync using my own Supabase project, preserving existing data.
 Verify device pairing, edits across devices, and sync after reconnecting. Report results and unresolved issues.
 ```
+
+## Documentation
+
+See the [bilingual documentation index](docs/README.md) for deployment, sync, testing, and contribution guides.
 
 ## Development
 

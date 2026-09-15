@@ -51,3 +51,6 @@ release.sh
 
 # Local archives; may contain signing keys and deployment credentials.
 local-backups/
+
+# Private project notes are not public documentation.
+/docs/ivy-lee-method.md

@@ -1,5 +1,7 @@
 # Cloudflare Pages 部署
 
+[English](cloudflare-pages.md) | **简体中文**
+
 统一使用 Web/PWA 构建：
 
 ```sh

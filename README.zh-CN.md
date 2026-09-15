@@ -97,6 +97,10 @@ npm run build
 验证设备配对、跨设备修改和离线重连后的同步，简述结果及未解决的问题。
 ```
 
+## 配套文档
+
+[双语文档目录](docs/README.zh-CN.md)汇总部署、同步、测试与贡献指南。
+
 ## 开发与贡献
 
 | 命令 | 用途 |
@@ -107,7 +111,7 @@ npm run build
 | `npm run test:db` | 临时 PostgreSQL 事务与权限测试；需 `initdb`、`pg_ctl`、`psql` |
 | `npm run build` | 清理并重新生成可部署的 `dist/` |
 
-`test:db` 不连接现有数据库。项目未设置数值覆盖率门槛，贡献约定见 [AGENTS.md](AGENTS.md)。
+`test:db` 不连接现有数据库。项目未设置数值覆盖率门槛，贡献约定见[贡献指南](AGENTS.zh-CN.md)。
 
 | 路径 | 用途 |
 |---|---|
@@ -128,4 +132,4 @@ npm run build
 
 ## 许可证
 
-本项目自有代码采用 [MIT 许可证](LICENSE)，允许使用、修改、商用和再分发，须保留版权与许可声明。第三方库继续适用各自许可证，见[第三方声明](www/vendor/README.md)。
+本项目自有代码采用 [MIT 许可证](LICENSE)，允许使用、修改、商用和再分发，须保留版权与许可声明。第三方库继续适用各自许可证，见[第三方声明](www/vendor/README.zh-CN.md)。
