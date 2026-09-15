@@ -7,7 +7,7 @@
 
 const KEY = "sixthings:v1";
 // 应用版本号（与 index.html 的 ?v= 保持同步）
-const APP_VERSION = "20260825d";
+const APP_VERSION = "20260915b";
 
 /* ---------------- 状态 ---------------- */
 let S = load();
@@ -31,7 +31,7 @@ let histMonth = -1; // 坚持页日历：当前显示月份（0-11，-1=未初�
 let histSelected = null; // 坚持页日历：选中的日期 key（如 "2026-08-21"）
 
 /* ---------------- 工具 ---------------- */
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function uid() { return crypto.randomUUID(); }
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -68,6 +68,7 @@ function defaultState() {
     inbox: [],               // 收件箱（插入事项）
     lastNotified: {},        // { morning:'date', evening:'date' }
     usedTodayChance: false,  // 「一次机会」是否已用掉：今天清单定型后，给一次把新规划当今日任务执行的机会
+    resetId: null,           // 显式清空的标记，防止离线设备复活旧内容
   };
 }
 function load() {
@@ -79,7 +80,13 @@ function load() {
   } catch (e) { return defaultState(); }
 }
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+  try {
+    if (typeof Sync !== "undefined") Sync.syncCapture(S);
+    localStorage.setItem(KEY, JSON.stringify(S));
+  } catch (error) {
+    toast("本机保存失败，请立即导出备份");
+    return;
+  }
   idbBackup(); // 异步双写 IndexedDB 备份
   if (typeof Sync !== "undefined" && Sync.enabled && Sync.paired) Sync.syncPush();
 }
@@ -145,12 +152,12 @@ function activateToday() {
   if (S.plan.date < k) {
     // 过期规划（date < 今天）：若今天还没有清单则激活，否则丢弃；无论哪种都不再残留
     if (!S.days[k] && S.plan.items && S.plan.items.length > 0) {
-      S.days[k] = { items: S.plan.items.map(i => ({ id: uid(), text: i.text, done: false, skipped: false })), closed: false };
+      S.days[k] = { items: S.plan.items.map(i => ({ id: i.id || uid(), text: i.text, done: false, skipped: false })), closed: false };
     }
     S.plan = null;
     save();
   } else if (!S.days[k] && S.plan.date <= k) {
-    S.days[k] = { items: S.plan.items.map(i => ({ id: uid(), text: i.text, done: false, skipped: false })), closed: false };
+    S.days[k] = { items: S.plan.items.map(i => ({ id: i.id || uid(), text: i.text, done: false, skipped: false })), closed: false };
     S.plan = null;
     save();
   }
@@ -200,7 +207,7 @@ function rolloverToday() {
     const p = planTarget();
     if (p.date !== keyTomorrow()) { p.date = keyTomorrow(); }
     const has = new Set(p.items.map(i => i.text));
-    carry.forEach(i => { if (!has.has(i.text)) { p.items.push({ id: uid(), text: i.text, done: false, skipped: false }); has.add(i.text); } });
+    carry.forEach(i => { if (!has.has(i.text)) { p.items.push({ id: i.id || uid(), text: i.text, done: false, skipped: false }); has.add(i.text); } });
   }
   save();
   return carry.length;
@@ -227,7 +234,7 @@ function useTodayChance() {
   const planItems = (S.plan && S.plan.items) ? S.plan.items : [];
   // 把规划里的任务转进今日
   if (planItems.length > 0) {
-    day.items = planItems.map(i => ({ id: uid(), text: i.text, done: false, skipped: false }));
+    day.items = planItems.map(i => ({ id: i.id || uid(), text: i.text, done: false, skipped: false }));
     S.plan = null;
   } else {
     // 规划为空：开启今日清单让用户直接写
@@ -640,30 +647,21 @@ function renderSettings() {
   html += '<p class="muted" style="margin-top:10px">1918 年 Ivy Lee 靠这套方法，让美国钢铁公司老板 Charles Schwab 付了 25,000 美金。真正的难点不是方法，是分辨哪些才是重要的事。</p>';
   html += '</div>';
 
-  // 多端同步状态
   const syncOk = typeof Sync !== "undefined" && Sync.enabled;
-  html += '<div class="card sync-status-card"><h2 class="sec-title" style="font-size:16px">多端同步</h2>';
-  if (!syncOk) {
-    html += '<p class="muted" style="font-size:13px;line-height:1.7">尚未配置同步。多端实时同步让电脑/手机随时一致，无需导出导入。<br/>需先配置 Supabase 项目（见文档）。</p>';
-    html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" data-act="sync-pair" style="font-size:13px">开始配对</button></div>';
-  } else if (Sync.paired) {
-    // 实时连接状态
-    const stMap = { off: ["⚪", "未连接", "#999"], connecting: ["🔄", "连接中…", "#f59e0b"], connected: ["🟢", "已连接·实时同步中", "#22c55e"], reconnecting: ["⚠️", "网络中断·重连中…", "#ef4444"] };
-    const st = stMap[Sync.connState] || stMap.off;
-    const lastTxt = Sync.lastSyncAt ? "最后同步 " + new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "尚未同步";
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span class="sync-dot" style="width:10px;height:10px;border-radius:50%;background:' + st[2] + ';display:inline-block;box-shadow:0 0 6px ' + st[2] + '"></span><span class="sync-label" style="font-size:13px;font-weight:600;color:' + st[2] + '">' + st[1] + '</span><span class="sync-time muted" style="font-size:11px;margin-left:auto">' + lastTxt + '</span></div>';
-    html += '<p class="muted" style="font-size:13px;line-height:1.7">✅ 已配对房间 <b>' + (Sync.room || "") + '</b><br/>任何设备改动都会自动同步到所有已配对设备。</p>';
-    html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn ghost-btn" data-act="sync-disconnect" style="font-size:13px">解除配对</button></div>';
+  const paired = typeof Sync !== "undefined" && Sync.paired;
+  html += '<div class="card sync-status-card" data-sync-mode="' + syncOk + ':' + paired + '"><h2 class="sec-title" style="font-size:16px">多端同步</h2>';
+  html += '<p class="sync-label muted">' + syncStatusLabel() + '</p><p class="sync-error muted"></p>';
+  if (paired) {
+    html += '<p class="muted"><span class="sync-members">' + Sync.members + '</span> 台设备共享清单。新设备可继续扫码加入。</p>';
+    html += '<button class="btn ghost-btn" data-act="sync-disconnect">停止本机同步</button> ';
   } else {
-    html += '<p class="muted" style="font-size:13px;line-height:1.7">已连接，尚未配对。点「显示配对码」让另一台设备扫码加入。</p>';
-    html += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn" data-act="sync-pair" style="font-size:13px">显示配对码</button></div>';
+    html += '<p class="muted">' + (syncOk ? '创建配对码，或输入另一台设备的配对码。' : '当前使用本机存储。维护者启用同步后，可以在多台设备间共享清单。') + '</p>';
   }
+  html += '<button class="btn" data-act="sync-pair">' + (paired ? '添加设备' : '显示配对码') + '</button>';
   html += '<div id="sync-pair-area"></div>';
-  // 加入配对（手机端/其他设备输入码或扫码加入）
-  html += '<div style="display:flex;gap:8px;margin-top:10px;align-items:center"><input id="sync-code-input" placeholder="输入8位配对码加入" maxlength="8" style="flex:1;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;font-size:15px;background:#fff;color:var(--ink)" /><button class="btn" data-act="sync-join" style="font-size:13px;padding:8px 14px">加入</button><button class="btn ghost-btn" data-act="sync-scan" style="font-size:13px;padding:8px 14px">扫码</button></div>';
-  html += '<div id="sync-scanner-wrap" style="display:none;margin-top:10px"><video id="sync-scanner" playsinline muted style="width:100%;max-width:280px;border-radius:12px;background:#000"></video><p class="muted" style="font-size:12px;margin-top:4px">将摄像头对准电脑屏幕上的二维码，识别后自动加入</p></div>';
-  html += '<p class="muted" style="font-size:12px;margin-top:6px">电脑端点「显示配对码」，另一台设备扫码或输入码即可实时同步。</p>';
-  html += '</div>';
+  html += '<div style="display:flex;gap:8px;margin-top:10px;align-items:center"><input id="sync-code-input" placeholder="输入12位配对码" maxlength="12" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:8px;font-size:15px" /><button class="btn" data-act="sync-join">加入</button><button class="btn ghost-btn" data-act="sync-scan">扫码</button></div>';
+  html += '<div id="sync-scanner-wrap" style="display:none;margin-top:10px"><video id="sync-scanner" playsinline muted style="width:100%;max-width:280px;border-radius:12px;background:#000"></video><p class="muted">将摄像头对准另一台设备的二维码</p></div>';
+  html += '<p class="muted" style="font-size:12px">配对码10分钟有效，仅可加入一次。离线修改会保存在本机，联网后继续同步。</p></div>';
 
   html += '<div class="card"><h2 class="sec-title" style="font-size:16px">数据备份</h2>';
   html += '<div class="set-row"><div><div class="set-label">导出备份</div><div class="set-desc">把全部清单与历史下载成文件，永久保存、可换设备</div></div><button class="btn" style="padding:8px 14px;font-size:13px" data-act="export-data">导出</button></div>';
@@ -671,33 +669,11 @@ function renderSettings() {
   html += '<input type="file" id="import-file" accept="application/json,.json" style="display:none" />';
   html += '</div>';
   html += '<div class="card" style="margin-top:16px"><div class="set-row"><div><div class="set-label">重置所有数据</div><div class="set-desc">清空清单、历史和设置</div></div><button class="btn ghost-btn" style="padding:8px 14px;font-size:13px" data-act="reset">清空</button></div></div>';
-  html += '<p class="muted" style="text-align:center;margin-top:18px">六件事 · Six Things — 数据只存在你的设备本地，自动备份 + 可导出文件。</p>';
+  html += '<p class="muted" style="text-align:center;margin-top:18px">六件事 · Six Things — 数据保存在本机；启用同步后也会保存在共享服务中。可随时导出备份。</p>';
   html += '<p class="muted" style="text-align:center;margin-top:6px;font-size:11px;opacity:.7">版本 ' + APP_VERSION + '</p>';
 
   screen.innerHTML = html;
   bind(screen);
-  // 同步状态变化时，仅刷新同步卡片区域（避免整页闪烁）
-  if (typeof Sync !== "undefined") {
-    Sync.onStateChange = (st) => {
-      const card = screen.querySelector(".sync-status-card");
-      if (card) {
-        const stMap = { off: ["⚪", "未连接", "#999"], connecting: ["🔄", "连接中…", "#f59e0b"], connected: ["🟢", "已连接·实时同步中", "#22c55e"], reconnecting: ["⚠️", "网络中断·重连中…", "#ef4444"] };
-        const s = stMap[st] || stMap.off;
-        const lastTxt = Sync.lastSyncAt ? new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "尚未同步";
-        const el2 = card.querySelector(".sync-dot"); if (el2) { el2.style.background = s[2]; el2.style.boxShadow = "0 0 6px " + s[2]; }
-        const el3 = card.querySelector(".sync-label"); if (el3) { el3.textContent = s[1]; el3.style.color = s[2]; }
-        const el4 = card.querySelector(".sync-time"); if (el4) el4.textContent = lastTxt;
-      }
-    };
-    // 定时刷新"最后同步时间"
-    if (!Sync._uiTimer) Sync._uiTimer = setInterval(() => {
-      const card = document.querySelector(".sync-status-card");
-      if (card) {
-        const t = card.querySelector(".sync-time");
-        if (t) t.textContent = Sync.lastSyncAt ? "最后同步 " + new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "尚未同步";
-      }
-    }, 1000);
-  }
   // 导入：文件选择后读取合并
   const fi = el("import-file");
   if (fi) {
@@ -732,8 +708,9 @@ function bind(root) {
   const sind = root.querySelector && root.querySelector("#sync-indicator");
   if (sind) sind.addEventListener("click", () => { currentTab = "settings"; render(); });
   root.querySelectorAll("[data-act]").forEach(b => {
-    b.addEventListener("click", (e) => {
-      e.preventDefault();
+    const event = b.matches('input[type="checkbox"], input[type="time"]') ? "change" : "click";
+    b.addEventListener(event, (e) => {
+      if (event === "click") e.preventDefault();
       const act = b.dataset.act;
       const id = b.dataset.id;
       handle(act, id, b);
@@ -832,7 +809,7 @@ function handle(act, id, btn) {
       if (r.ok) {
         const area = el("sync-pair-area");
         if (area) {
-          area.innerHTML = '<div style="margin-top:10px;padding:14px;border:1.5px dashed var(--accent);border-radius:12px;text-align:center"><div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">让另一台设备扫码或输入配对码加入</div><div id="sync-qr" style="margin:8px auto;width:160px;height:160px;background:#fff;padding:8px;border-radius:8px"></div><div style="font-size:30px;font-weight:900;letter-spacing:8px;color:var(--accent)">' + r.code + '</div><div style="font-size:12px;color:var(--ink-3);margin-top:6px">二维码 10 分钟有效，一次性</div></div>';
+          area.innerHTML = '<div style="margin-top:10px;padding:14px;border:1.5px dashed var(--accent);border-radius:12px;text-align:center"><div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">让另一台设备扫码或输入配对码加入</div><div id="sync-qr" style="margin:8px auto;width:160px;height:160px;background:#fff;padding:8px;border-radius:8px"></div><div style="font-size:24px;font-weight:900;letter-spacing:3px;color:var(--accent)">' + r.code + '</div><div style="font-size:12px;color:var(--ink-3);margin-top:6px">二维码 10 分钟有效，一次性</div></div>';
           if (typeof Sync.syncRenderQR === "function") Sync.syncRenderQR(el("sync-qr"), r.code);
         }
         toast("配对码已生成：" + r.code);
@@ -848,7 +825,7 @@ function handle(act, id, btn) {
       if (wrap.style.display === "none") {
         const sc = Sync.syncStartScanner(video, (code) => {
           // 识别到二维码（内容=配对码）
-          if (code && /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code)) {
+          if (code && /^[0-9A-F]{12}$/i.test(code)) {
             wrap.style.display = "none";
             Sync.syncJoinPairing(code).then(r => {
               if (r.ok) { toast("扫码配对成功，开始实时同步"); renderSettings(); }
@@ -867,7 +844,7 @@ function handle(act, id, btn) {
       if (typeof Sync === "undefined" || !Sync.enabled) { toast("同步未配置：需先配置 Supabase"); break; }
       const inp = el("sync-code-input");
       const code = inp ? inp.value.trim() : "";
-      if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(code)) { toast("请输入 8 位配对码"); break; }
+      if (!/^[0-9A-F]{12}$/i.test(code)) { toast("请输入 12 位配对码"); break; }
       Sync.syncJoinPairing(code).then(r => {
         if (r.ok) { toast("配对成功，开始实时同步"); renderSettings(); }
         else { toast("加入失败：" + (r.reason || "未知")); }
@@ -900,15 +877,10 @@ function handle(act, id, btn) {
       break;
     }
     case "reset":
-      if (confirm("确定清空所有数据？")) {
-        localStorage.removeItem(KEY);
+      if (confirm("确定清空清单、历史和设置？已启用同步时，共享设备也会清空。")) {
         S = defaultState();
-        // 同步清掉 IndexedDB 备份，避免刷新后 autoRestore 把旧数据复活
-        try {
-          const dbReq = indexedDB.deleteDatabase(IDB_NAME);
-          dbReq.onsuccess = () => {}; dbReq.onerror = () => {}; dbReq.onblocked = () => {};
-        } catch (e) {}
-        _idbReady = false;
+        S.resetId = crypto.randomUUID();
+        save(); // Persist an empty backup and send an explicit shared-state deletion.
         toast("已清空");
       }
       break;
@@ -995,108 +967,38 @@ function requestNotify() {
 /* ---------------- 启动 ---------------- */
 // 多端同步：收到远端数据 → 合并保存
 function syncApplyRemote(payload) {
-  try {
-    if (!payload || !payload.data) return;
-    const remote = JSON.parse(payload.data);
-    if (!remote || typeof remote !== "object") return;
-    // 业务数据指纹（不含 lastSyncAt 等元数据）
-    // settings 只取远端拥有的键（Object.assign 会扩展本地 settings，全字段比较永远不等）
-    const bizSig = (o, subsetKeys) => {
-      const pick = {};
-      for (const k of subsetKeys || ["days", "plan", "inbox", "settings"]) pick[k] = o[k];
-      return JSON.stringify(pick);
-    };
-    const remoteKeys = ["days", "plan", "inbox", "settings"].filter(k => remote[k] !== undefined);
-    // 远端视角的本地指纹：days/plan/inbox 取 S 当前值，settings 只取远端拥有的键
-    const localView = {};
-    for (const k of remoteKeys) {
-      if (k === "settings") {
-        const sub = {};
-        for (const sk in remote.settings) if (remote.settings[sk] !== undefined) sub[sk] = (S.settings||{})[sk];
-        localView.settings = sub;
-      } else {
-        localView[k] = S[k];
-      }
-    }
-    const remoteSig = bizSig(remote, remoteKeys);
-    const localSig = bizSig(localView, remoteKeys);
-    // 去重：内容无实际变化 → 不处理（不 toast、不 save、不 render）
-    if (remoteSig === localSig) {
-      // 但若时间戳更新（对方 echo），仅轻量更新 lastSyncAt，不打扰
-      const incomingAt = new Date(payload.updatedAt || 0).getTime();
-      if (incomingAt > (S.lastSyncAt || 0)) S.lastSyncAt = incomingAt;
-      return;
-    }
-    // 冲突处理：最后写入者胜（用 updatedAt 比较）
-    const incomingAt = new Date(payload.updatedAt || 0).getTime();
-    const localAt = S.lastSyncAt || 0;
-    if (incomingAt < localAt) return; // 更旧的数据，忽略
-
-    // ===== 字段级智能合并（体验拉满：两端数据都不丢） =====
-    // days：按天合并，同一天 items 按 id 合并（各自保留对方没有的任务）
-    let daysChanged = false;
-    for (const k in (remote.days || {})) {
-      const rd = remote.days[k];
-      const ld = S.days[k];
-      if (!ld) { S.days[k] = JSON.parse(JSON.stringify(rd)); daysChanged = true; continue; }
-      const mergedItems = [];
-      const seen = new Set();
-      for (const it of (ld.items || [])) { if (!seen.has(it.id)) { mergedItems.push(it); seen.add(it.id); } }
-      for (const it of (rd.items || [])) {
-        if (!seen.has(it.id)) { mergedItems.push(it); seen.add(it.id); }
-        else {
-          // 同 id：保留更完整/更新的（有 done 状态差异时按更新顺序，简单取远端）
-          const idx = mergedItems.findIndex(x => x.id === it.id);
-          if (idx >= 0) mergedItems[idx] = it;
-        }
-      }
-      if (mergedItems.length !== (ld.items || []).length) daysChanged = true;
-      S.days[k] = { ...ld, ...rd, items: mergedItems, closed: (ld.closed || rd.closed || false) };
-    }
-    // inbox：合并去重（按 id 和 text 双去重）
-    if (Array.isArray(remote.inbox)) {
-      const seen = new Set();
-      const merged = [];
-      for (const it of (S.inbox || [])) { if (!seen.has(it.id) && !seen.has("t:" + it.text)) { merged.push(it); seen.add(it.id); seen.add("t:" + it.text); } }
-      for (const it of (remote.inbox || [])) { if (!seen.has(it.id) && !seen.has("t:" + it.text)) { merged.push(it); seen.add(it.id); seen.add("t:" + it.text); } }
-      if (JSON.stringify(merged) !== JSON.stringify(S.inbox)) S.inbox = merged;
-    }
-    // plan：本地有内容且远端空 → 保留本地；远端有内容 → 用远端（规划是"即将执行"的，远端为准）
-    if (remote.plan && remote.plan.items && remote.plan.items.length > 0) S.plan = JSON.parse(JSON.stringify(remote.plan));
-    else if (!S.plan || !S.plan.items || S.plan.items.length === 0) S.plan = remote.plan || null;
-    // settings：字段级合并，本地未显式设置的键才取远端
-    if (remote.settings && typeof remote.settings === "object") {
-      const localSet = new Set(Object.keys(S.settings || {}));
-      for (const sk in remote.settings) {
-        if (!localSet.has(sk) || S.settings[sk] === undefined) S.settings[sk] = remote.settings[sk];
-      }
-    }
-
-    S.lastSyncAt = incomingAt;
-    // 应用了远端数据：把推送指纹同步为当前数据，避免 save() 触发的回声推送
-    if (typeof Sync !== "undefined") Sync._lastPushedSig = bizSig(S);
-    save();
-    render();
-    // 体验：轻提示"已同步"(仅在有实际内容变化时)
-    if (daysChanged) toast("已同步其他设备的数据");
-  } catch (e) { console.warn("[sync] apply err:", e.message); }
+  if (!payload || !payload.data) return;
+  const data = SixSync.project(typeof payload.data === "string" ? JSON.parse(payload.data) : payload.data);
+  if (SixSync.equal(SixSync.project(S), data)) return;
+  S.days = data.days;
+  S.plan = data.plan;
+  S.inbox = data.inbox;
+  S.settings = { ...S.settings, ...data.settings }; // Notification permission remains local.
+  S.usedTodayChance = data.usedTodayChance;
+  S.resetId = data.resetId;
+  save();
+  render();
 }
 // 全局同步指示器：顶部小圆点 + 最后同步时间（所有页面可见）
+function syncStatusLabel() {
+  if (typeof Sync === "undefined") return "仅保存在本机";
+  return ({off:"未配对", connecting:"连接中", syncing:"正在同步", pending:"有修改待上传", connected:"已同步", reconnecting:"等待联网重试", error:"同步暂不可用"})[Sync.connState] || "未连接";
+}
 function updateSyncIndicator() {
   const ind = el("sync-indicator");
-  if (!ind) return;
-  const paired = typeof Sync !== "undefined" && Sync.paired;
-  const stMap = { off: ["#999", "未连接"], connecting: ["#f59e0b", "连接中"], connected: ["#22c55e", "已同步"], reconnecting: ["#ef4444", "重连中"] };
-  const st = (typeof Sync !== "undefined" && stMap[Sync.connState]) || stMap.off;
-  if (!paired) { ind.style.display = "none"; return; }
-  ind.style.display = "flex";
-  const dot = el("sync-ind-dot"); if (dot) dot.style.background = st[0];
-  const t = el("sync-ind-time");
-  if (t) {
-    if (Sync.connState === "connecting") t.textContent = "连接中";
-    else if (Sync.connState === "reconnecting") t.textContent = "重连中";
-    else if (Sync.lastSyncAt) t.textContent = new Date(Sync.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    else t.textContent = "";
+  if (!ind || typeof Sync === "undefined") return;
+  ind.style.display = Sync.paired ? "flex" : "none";
+  const color = Sync.connState === "connected" ? "#22c55e" : Sync.connState === "error" ? "#ef4444" : "#f59e0b";
+  const dot = el("sync-ind-dot"); if (dot) dot.style.background = color;
+  const text = el("sync-ind-time"); if (text) text.textContent = syncStatusLabel();
+  let card = document.querySelector(".sync-status-card");
+  if (currentTab === "settings" && card && card.dataset.syncMode !== String(Sync.enabled) + ":" + String(Sync.paired)) {
+    renderSettings(); card = document.querySelector(".sync-status-card");
+  }
+  if (card) {
+    card.querySelector(".sync-label").textContent = syncStatusLabel();
+    card.querySelector(".sync-error").textContent = Sync.lastError;
+    const members = card.querySelector(".sync-members"); if (members) members.textContent = Sync.members;
   }
 }
 if (typeof Sync !== "undefined") {
@@ -1114,6 +1016,7 @@ function boot() {
   document.querySelectorAll(".tab").forEach(t => {
     t.addEventListener("click", () => { currentTab = t.dataset.tab; render(); });
   });
+  el("sync-indicator").addEventListener("click", () => { currentTab = "settings"; render(); });
   render();
   checkReminders();
   setInterval(() => {

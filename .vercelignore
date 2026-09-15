@@ -1,7 +1,6 @@
 node_modules
-android
-ios
-dist
+local-backups
+.env*
 .buildlogs
 reel_extract
 screenshots

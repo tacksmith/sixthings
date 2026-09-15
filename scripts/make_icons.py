@@ -1,7 +1,8 @@
 
 from PIL import Image, ImageDraw, ImageFont
-import os
-os.makedirs("icons", exist_ok=True)
+from pathlib import Path
+icons = Path(__file__).resolve().parents[1] / "www" / "icons"
+icons.mkdir(parents=True, exist_ok=True)
 for size in (192, 512):
     img = Image.new("RGBA", (size, size), (0,0,0,0))
     d = ImageDraw.Draw(img)
@@ -17,5 +18,5 @@ for size in (192, 512):
     x = (size-tw)/2 - bbox[0]
     y = (size-th)/2 - bbox[1] - size*0.02
     d.text((x, y), text, font=font, fill=(255,255,255,255))
-    img.save(f"icons/icon-{size}.png")
+    img.save(icons / f"icon-{size}.png")
     print(f"icon-{size}.png", img.size)

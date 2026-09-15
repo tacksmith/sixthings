@@ -1,374 +1,220 @@
-/* ============================================================
- * 六件事 · 多端实时同步模块 (sync.js)
- * 方案：Supabase Realtime（托管，无需自建后端）
- * 配对：电脑端显示二维码/配对码，手机扫码加入
- * 冲突：最后写入者胜（按 updatedAt）
- * 依赖：vendor/supabase.umd.js（本地化，无需 CDN）
- * ============================================================ */
 "use strict";
-
-/* ---------------- 配置（用户提供后填写） ---------------- */
-const SYNC_CONFIG = {
-  url: "https://hndaatgnhprpzakdjump.supabase.co",
-  anonKey: "sb_publishable_OK7NIxp_KSV0FlKe6JXchQ_DSRToK45",
-};
-
-/* ---------------- 状态 ---------------- */
+const SYNC_CONFIG = window.SIXTHINGS_CONFIG || {url:"", anonKey:""};
 const Sync = {
-  client: null,          // supabase 客户端
-  enabled: false,        // 是否已配置并连接
-  pairingCode: null,     // 本机配对码（电脑端生成）
-  paired: false,         // 是否已配对（有配对房间）
-  room: null,            // 当前配对房间名
-  deviceId: null,        // 本机设备 id（持久化）
-  lastPushed: 0,         // 最近一次上传时间戳
-  _channel: null,        // realtime channel
-  _listening: false,     // 是否在监听远端
-  _members: null,        // 房间成员 uid 缓存 {host_uid, guest_uid}（配对时获取，推送不再查库）
-  _pollTimer: null,      // 轮询兜底定时器（realtime 断连时也能同步）
-  _pushTimer: null,      // 推送防抖定时器（连续改动合并为一次推送）
-  _lastApplied: null,    // 最近一次应用过的远端数据指纹 {device, sig}（去重 + 防回环）
-  _lastPushedSig: null,  // 最近一次推送的数据指纹（无本地改动时不重复推，防回环）
-  onData: null,          // 收到远端数据回调（由 app.js 设置）
-  connState: "off",      // 连接状态: off/connecting/connected/reconnecting（供 UI 显示）
-  lastSyncAt: 0,         // 最近一次成功同步（推或拉）的时间戳
-  onStateChange: null,   // 状态变化回调（app.js 设置，用于更新 UI）
-  _retryTimer: null,     // 断线自动重连定时器
+  client:null, enabled:false, uid:null, paired:false, room:null, pairingCode:null,
+  connState:"off", lastSyncAt:0, lastError:"", members:0,
+  onData:null, onGetData:null, onStateChange:null,
+  _engine:null, _channel:null, _pollTimer:null, _pushTimer:null, _retryTimer:null,
+  _initializing:null, _operation:null, _generation:0, _controlVersion:0,
 };
-// 内部更新连接状态并通知 UI
-function syncSetState(st) {
-  Sync.connState = st;
-  try { if (Sync.onStateChange) Sync.onStateChange(st); } catch (e) {}
+function syncSettings() { return JSON.parse(localStorage.getItem("sixthings:sync") || "{}"); }
+function syncRemember(patch) {
+  localStorage.setItem("sixthings:sync", JSON.stringify({...syncSettings(), ...patch}));
 }
-
-/* ---------------- 工具 ---------------- */
-function syncUid() { return Math.random().toString(36).slice(2, 10); }
-function syncNow() { return Date.now(); }
-// 设备 id：持久化在 localStorage
-function syncDeviceId() {
-  if (Sync.deviceId) return Sync.deviceId;
+function syncSetState(state, error) {
+  Sync.connState = state;
+  Sync.lastError = error ? syncError(error) : "";
+  if (state === "connected") Sync.lastSyncAt = Date.now();
+  if (Sync.onStateChange) Sync.onStateChange(state);
+}
+function syncError(error) {
+  if (error.code === "PGRST202" || error.code === "42883") return "同步服务需要升级，请联系维护者";
+  if (error.code === "42501") return "当前设备没有访问权限，请重新配对";
+  if (error.code === "22023") return "配对码无效、已使用或已过期";
+  if (error.name === "QuotaExceededError") return "本机存储空间不足，请立即导出备份";
+  return error.message || "暂时无法连接，内容已保存在本机，联网后重试";
+}
+async function syncRpc(name, parameters) {
+  if (!Sync.client) throw new Error("尚未连接同步服务");
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 12000);
   try {
-    let id = localStorage.getItem("sixthings:devid");
-    if (!id) { id = "dev-" + syncUid(); localStorage.setItem("sixthings:devid", id); }
-    Sync.deviceId = id;
-    return id;
-  } catch (e) { return "dev-" + syncUid(); }
+    let request = Sync.client.rpc(name, parameters);
+    if (request.abortSignal) request = request.abortSignal(abort.signal);
+    const {data, error} = await request;
+    if (error) throw error;
+    if (data?.members !== undefined) Sync.members = data.members;
+    return data;
+  } finally { clearTimeout(timer); }
 }
-
-/* ---------------- 连接 Supabase ---------------- */
-async function syncInit() {
-  if (!SYNC_CONFIG.url || !SYNC_CONFIG.anonKey) { Sync.enabled = false; return false; }
-  try {
-    if (!window.supabase) throw new Error("supabase SDK 未加载");
-    Sync.client = window.supabase.createClient(SYNC_CONFIG.url, SYNC_CONFIG.anonKey, {
-      realtime: { params: { eventsPerSecond: 10 } },
-    });
-    // 匿名登录：每个设备获得稳定身份（RLS 基于 auth.uid() 隔离）
-    await syncEnsureAuth();
-    Sync.enabled = true;
-    return true;
-  } catch (e) { console.warn("[sync] init failed:", e.message); Sync.enabled = false; return false; }
-}
-
-// 确保已匿名登录，返回 auth.uid()（失败返回 null）
 async function syncEnsureAuth() {
-  try {
-    // 先看本地是否已有会话（注意：supabase-js v2 的 getSession 返回 Promise，必须 await）
-    const sess = await Sync.client.auth.getSession();
-    if (sess && sess.data && sess.data.session) {
-      Sync.uid = sess.data.session.user.id;
-      return Sync.uid;
-    }
-    // 无会话 → 匿名登录
-    const { data, error } = await Sync.client.auth.signInAnonymously();
-    if (error) { console.warn("[sync] anon signin err:", error.message); return null; }
-    Sync.uid = data.user.id;
-    // 持久化会话（supabase-js 自动存 localStorage，刷新后自动恢复）
-    return Sync.uid;
-  } catch (e) { console.warn("[sync] auth err:", e.message); return null; }
+  const {data:session, error:sessionError} = await Sync.client.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (session?.session?.user?.id) { Sync.uid = session.session.user.id; return Sync.uid; }
+  const {data, error} = await Sync.client.auth.signInAnonymously();
+  if (error) throw error;
+  if (!data?.user?.id) throw new Error("无法取得同步身份");
+  Sync.uid = data.user.id;
+  return Sync.uid;
 }
-
-/* ---------------- 配对 ---------------- */
-// 电脑端：生成新配对码并显示
-async function syncCreatePairing() {
-  if (!Sync.enabled) return { ok: false, reason: "not-configured" };
-  // 清理旧配对状态：移除旧房间订阅 + 旧 pairing 监听
-  if (Sync._channel) { try { Sync.client.removeChannel(Sync._channel); } catch (e) {} }
-  Sync._channel = null;
-  Sync._listening = false;
-  Sync._members = null;
-  if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
-  const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 去掉易混的 I/O/0/1
-  let code = "";
-  for (let i = 0; i < 8; i++) code += CHARS[Math.floor(Math.random() * CHARS.length)];
-  // 8 位配对码（带创建时间，配对后一次性）
-  const devId = syncDeviceId();
-  Sync.pairingCode = code;
-  Sync.paired = false;
-  Sync.room = "room-" + code;
-  try {
-    // 写入 pairing 表（等待手机加入）
-    const expAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 分钟有效
-    if (!Sync.uid) return { ok: false, reason: "not-authenticated" };
-    await Sync.client.from("pairings").upsert({
-      code, host: devId, host_uid: Sync.uid, status: "waiting", created_at: new Date().toISOString(), expires_at: expAt,
-    });
-    // 立即持久化配对码（刷新后自动重连该 room，即使手机还没加入）
+function syncInit() {
+  if (Sync._initializing) return Sync._initializing;
+  Sync._initializing = (async () => {
     try {
-      const saved = localStorage.getItem("sixthings:sync");
-      const c = saved ? JSON.parse(saved) : {};
-      c.pairCode = code;
-      c.room = "room-" + code;
-      localStorage.setItem("sixthings:sync", JSON.stringify(c));
-    } catch (e) {}
-    // 开始监听 room 的配对状态
-    await syncListenPairing(code);
-    return { ok: true, code };
-  } catch (e) {
-    console.warn("[sync] create pairing err:", e.message);
-    return { ok: false, reason: e.message };
+      if (!SYNC_CONFIG.url || !SYNC_CONFIG.anonKey) { Sync.enabled = false; return false; }
+      if (!window.supabase) throw new Error("同步组件未加载，请刷新页面");
+      if (!Sync.client) Sync.client = window.supabase.createClient(SYNC_CONFIG.url, SYNC_CONFIG.anonKey);
+      await syncEnsureAuth();
+      Sync.enabled = true;
+      return true;
+    } catch (error) { Sync.enabled = false; syncSetState("error", error); return false; }
+  })().finally(() => { Sync._initializing = null; });
+  return Sync._initializing;
+}
+function syncStop() {
+  Sync._generation++;
+  Sync._engine?.stop(); Sync._engine = null;
+  for (const key of ["_pollTimer", "_pushTimer", "_retryTimer"]) {
+    clearTimeout(Sync[key]); clearInterval(Sync[key]); Sync[key] = null;
+  }
+  if (Sync._channel) Sync.client?.removeChannel(Sync._channel);
+  Sync._channel = null;
+}
+function syncMakeEngine(room, resume) {
+  const current = SixSync.project(Sync.onGetData());
+  const engine = new SixSync.Engine({room, initial:current, storage:localStorage,
+    transport:{
+      read:room => syncRpc("six_get_room", {p_room:room}),
+      write:(room, revision, data, id) => syncRpc("six_write_room", {p_room:room,p_revision:revision,p_data:data,p_write_id:id}),
+    },
+    apply:data => Sync.onData?.({type:"remote-data", data}),
+    status:(state, error) => syncSetState(state, error),
+  });
+  if (!resume) engine.capture(current);
+  Sync._engine = engine;
+  engine.restore();
+  return engine;
+}
+function syncWatch(room) {
+  if (!Sync.client.channel) return;
+  const generation = Sync._generation;
+  const channel = Sync.client.channel("six-room-" + room);
+  Sync._channel = channel;
+  channel.on("postgres_changes", {event:"UPDATE",schema:"public",table:"six_rooms",filter:"id=eq." + room}, () => syncPush(0))
+    .subscribe(state => {
+      if (generation !== Sync._generation || Sync._channel !== channel) return;
+      if (state === "SUBSCRIBED") syncPush(0);
+      if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(state) && !Sync._retryTimer) {
+        Sync._retryTimer = setTimeout(() => {
+          Sync._retryTimer = null;
+          if (generation !== Sync._generation) return;
+          const old = Sync._channel;
+          Sync._channel = null;
+          if (old) Sync.client.removeChannel(old);
+          syncWatch(room);
+        }, 3000);
+      }
+    });
+}
+async function syncStartRoom(room, resume = true) {
+  if (!/^[0-9a-f-]{36}$/i.test(room)) throw new Error("同步空间格式不正确");
+  syncStop(); Sync.room = room; Sync.paired = true;
+  const generation = Sync._generation;
+  syncRemember({protocol:3,room,pairCode:null,pendingCreate:null});
+  syncMakeEngine(room, resume);
+  if (!Sync.enabled && !(await syncInit())) return false;
+  if (generation !== Sync._generation) return false;
+  syncWatch(room);
+  Sync._pollTimer = setInterval(() => syncFlush(), 5000);
+  return syncFlush();
+}
+async function syncFlush() {
+  const engine = Sync._engine;
+  if (!engine || !Sync.enabled) return false;
+  try { return await engine.flush(); }
+  catch (error) {
+    if (engine === Sync._engine) syncSetState("reconnecting", error);
+    return false;
   }
 }
-// 监听配对结果（电脑端）：手机加入后 status -> paired
-async function syncListenPairing(code) {
-  if (!Sync.enabled) return;
-  Sync.client.channel("pairing-" + code)
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pairings", filter: "code=eq." + code }, (payload) => {
-      if (payload.new && payload.new.status === "paired" && payload.new.guest) {
-        Sync.paired = true;
-        // 关键：从 realtime payload 直接缓存成员 uid（此时配对码尚未删除，但不可依赖）
-        if (payload.new.guest_uid) {
-          Sync._members = { host_uid: Sync.uid, guest_uid: payload.new.guest_uid };
-        }
-        if (Sync.onData) Sync.onData({ type: "paired", code, guest: payload.new.guest });
-        syncStartRoom(code);
-      }
-    })
-    .subscribe();
+function syncCapture(data) {
+  try { Sync._engine?.capture(data); }
+  catch (error) { syncSetState("error", error); throw error; }
 }
-// 手机端：用配对码加入
-async function syncJoinPairing(code) {
-  if (!Sync.enabled) return { ok: false, reason: "not-configured" };
-  const devId = syncDeviceId();
-  try {
-    if (!Sync.uid) return { ok: false, reason: "not-authenticated" };
-    const { data, error } = await Sync.client.from("pairings")
-      .update({ guest: devId, guest_uid: Sync.uid, status: "paired" })
-      .eq("code", code.toUpperCase())
-      .select();
-    if (error || !data || data.length === 0) return { ok: false, reason: "配对码不存在或已被使用" };
-    // 关键：从 update 返回的配对记录里缓存成员 uid（含 host_uid）
-    if (data[0]) {
-      Sync._members = { host_uid: data[0].host_uid || Sync.uid, guest_uid: Sync.uid };
-    }
-    // 配对成功后延迟销毁该码（等 A 端 realtime 收到 UPDATE 完成成员缓存后再删，避免竞争）
-    if (!error && data && data.length > 0) {
-      try { await Sync.client.from("pairings").delete().eq("code", code.toUpperCase()); } catch (e) {}
-    }
-    Sync.pairingCode = code;
-    Sync.paired = true;
-    Sync.room = "room-" + code;
-    await syncStartRoom(code);
-    return { ok: true };
-  } catch (e) { return { ok: false, reason: e.message }; }
-}
-
-/* ---------------- 实时数据通道 ---------------- */
-// 进入同步房间：双方订阅共享数据，上传本机数据
-async function syncStartRoom(code) {
-  if (!Sync.enabled || Sync._listening) return;
-  if (Sync._retryTimer) { clearTimeout(Sync._retryTimer); Sync._retryTimer = null; }
-  // 清理可能残留的旧订阅（防御：确保不重复订阅）
-  if (Sync._channel) { try { Sync.client.removeChannel(Sync._channel); } catch (e) {} }
-  if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
-  Sync._listening = true;
-  Sync.room = "room-" + code;
-  // 0) 缓存房间成员 uid（只查一次，推送时不再查库）
-  await syncLoadMembers(code);
-  // 1) 监听云端数据变化（Postgres changes on sync_data）
-  Sync._channel = Sync.client
-    .channel("sync-data-" + code)
-    .on("postgres_changes", {
-      event: "*", schema: "public", table: "sync_data", filter: "room=eq." + Sync.room,
-    }, (payload) => {
-      if (payload.new && payload.new.device !== syncDeviceId()) {
-        // 远端设备写入：应用数据
-        if (Sync.onData) Sync.onData({ type: "remote-data", data: payload.new.data, updatedAt: payload.new.updated_at, from: payload.new.device });
-      }
-    })
-    .subscribe((status) => {
-      // realtime 连接状态反馈
-      if (status === "SUBSCRIBED") { syncSetState("connected"); }
-      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        syncSetState("reconnecting");
-        // 自动重连：重置订阅（realtime 断线后不会自动恢复 postgres_changes）
-        Sync._listening = false;
-        if (Sync._channel) { try { Sync.client.removeChannel(Sync._channel); } catch (e) {} Sync._channel = null; }
-        if (Sync.room && Sync.paired) {
-          const rc = Sync.room.replace(/^room-/, "");
-          Sync._retryTimer = setTimeout(() => { syncStartRoom(rc); }, 1500); // 1.5s 后重连
-        }
-      }
-    });
-  syncSetState("connecting");
-  // 2) 拉取云端已有数据（新加入方拿到对方的）
-  await syncPull();
-  // 3) 上传本机数据（通知对方）
-  await syncPush();
-  // 4) 轮询兜底：realtime 断连时也能同步（每 8s 拉一次远端）
-  Sync._pollTimer = setInterval(() => { syncPull(); }, 5000);
-  // 5) 持久化配对状态（刷新后自动重连）
-  Sync.paired = true;
-  try {
-    const saved = localStorage.getItem("sixthings:sync");
-    const c = saved ? JSON.parse(saved) : {};
-    c.pairCode = String(code).replace(/^room-/, "");
-    c.room = Sync.room;
-    localStorage.setItem("sixthings:sync", JSON.stringify(c));
-  } catch (e) {}
-}
-
-// 获取房间成员 uid 并缓存（配对后一次，push 直接复用，避免每次查库）
-async function syncLoadMembers(code) {
-  const room = "room-" + String(code).replace(/^room-/, "");
-  try {
-    const { data, error } = await Sync.client.from("pairings")
-      .select("host_uid, guest_uid")
-      .eq("code", String(code).replace(/^room-/, ""))
-      .single();
-    if (!error && data) {
-      Sync._members = { host_uid: data.host_uid, guest_uid: data.guest_uid };
-      return;
-    }
-    // 配对码可能已被删除（一次性）→ 从 sync_data 现有行恢复成员 uid
-    const { data: rows } = await Sync.client.from("sync_data").select("host_uid, guest_uid").eq("room", room).limit(1);
-    if (rows && rows.length > 0 && rows[0]) {
-      const r = rows[0];
-      if (r.host_uid || r.guest_uid) Sync._members = { host_uid: r.host_uid || Sync.uid, guest_uid: r.guest_uid || Sync.uid };
-    }
-    // 兜底：_members 仍缺失时，用本机 uid 填 host（对方 uid 会在 realtime UPDATE / push 中补全）
-    if (!Sync._members) Sync._members = { host_uid: Sync.uid, guest_uid: Sync.uid };
-  } catch (e) { console.warn("[sync] load members:", e.message); }
-}
-
-// 上传本机全量数据到云端（最后写入者胜）
-// 推送（防抖）：连续改动在 800ms 内合并为一次推送，避免大量并发 upsert
-function syncPush() {
-  if (!Sync.enabled || !Sync.room) return false;
-  if (Sync._pushTimer) clearTimeout(Sync._pushTimer);
-  // 即时推送：本地改动 200ms 内同步到云端，体验接近实时
-  Sync._pushTimer = setTimeout(() => {
-    Sync._pushTimer = null;
-    _doPush();
-  }, 200);
+function syncPush(delay = 200) {
+  if (!Sync._engine) return false;
+  clearTimeout(Sync._pushTimer);
+  Sync._pushTimer = setTimeout(() => { Sync._pushTimer = null; syncFlush(); }, delay);
   return true;
 }
-
-async function _doPush() {
-  if (!Sync.enabled || !Sync.room || !Sync.onGetData) return false;
-  try {
-    const data = Sync.onGetData(); // app.js 提供当前状态
-    if (!data) return false;
-    // 业务指纹（与 syncApplyRemote 一致，防回环）：不含元数据
-    const curSig = JSON.stringify({ days: data.days, plan: data.plan, inbox: data.inbox, settings: data.settings });
-    if (Sync._lastPushedSig === curSig) return true; // 没变化，跳过推送（避免回声）
-    Sync._lastPushedSig = curSig;
-    // 用缓存的成员 uid（配对时已获取），避免每次推送都查库
-    let host = Sync._members ? Sync._members.host_uid : Sync.uid;
-    let guest = Sync._members ? Sync._members.guest_uid : Sync.uid;
-    if (!Sync._members) {
-      // 缓存缺失时尽力补一次（如配对早期）
-      try {
-        const code = (Sync.room || "").replace(/^room-/, "");
-        const { data: pair } = await Sync.client.from("pairings").select("host_uid, guest_uid").eq("code", code).single();
-        if (pair) { host = pair.host_uid || Sync.uid; guest = pair.guest_uid || Sync.uid; Sync._members = { host_uid: host, guest_uid: guest }; }
-      } catch (e) {}
-    }
-    const payload = {
-      room: Sync.room,
-      data: JSON.stringify(data),
-      updated_at: new Date().toISOString(),
-      device: syncDeviceId(),
-      host_uid: host,
-      guest_uid: guest,
-    };
-    Sync.lastPushed = Date.now();
-    const { error } = await Sync.client.from("sync_data").upsert(payload, { onConflict: "room" });
-    if (error) { console.warn("[sync] push upsert err:", error.message); syncSetState("reconnecting"); return false; }
-    Sync.lastSyncAt = Date.now();
-    if (Sync.connState === "off" || Sync.connState === "reconnecting") syncSetState("connected");
-    return true;
-  } catch (e) { console.warn("[sync] push err:", e.message); return false; }
+function syncExclusive(operation) {
+  if (Sync._operation) return Sync._operation;
+  const version = ++Sync._controlVersion;
+  const guard = () => { if (version !== Sync._controlVersion) throw new Error("操作已取消"); };
+  Sync._operation = operation(guard).catch(error => {
+    if (version !== Sync._controlVersion) return {ok:false,reason:"操作已取消"};
+    syncSetState("error", error); return {ok:false,reason:syncError(error)};
+  }).finally(() => { Sync._operation = null; });
+  return Sync._operation;
 }
-
-// 拉取云端数据
-async function syncPull() {
-  if (!Sync.enabled || !Sync.room) return null;
-  try {
-    const { data } = await Sync.client.from("sync_data").select("*").eq("room", Sync.room).single();
-    if (data && data.data && data.device !== syncDeviceId()) {
-      Sync.lastSyncAt = Date.now();
-      if (Sync.connState === "off" || Sync.connState === "reconnecting") syncSetState("connected");
-      if (Sync.onData) Sync.onData({ type: "remote-data", data: data.data, updatedAt: data.updated_at, from: data.device });
-      return data;
+function syncCreatePairing() {
+  return syncExclusive(async guard => {
+    if (!Sync.enabled && !(await syncInit())) throw new Error(Sync.lastError || "同步服务尚未配置");
+    guard();
+    if (!Sync.room) {
+      const room = syncSettings().pendingCreate || crypto.randomUUID();
+      syncRemember({pendingCreate:room});
+      await syncRpc("six_create_room", {p_room:room,p_data:SixSync.project(Sync.onGetData())});
+      guard();
+      await syncStartRoom(room, false);
+      guard();
     }
-  } catch (e) { console.warn("[sync] pull err:", e.message); }
-  return null;
+    const invitation = await syncRpc("six_create_invite", {p_room:Sync.room});
+    guard();
+    Sync.pairingCode = invitation.code;
+    return {ok:true,code:invitation.code};
+  });
 }
-
-// 解除配对/断开
+function syncJoinPairing(code) {
+  return syncExclusive(async guard => {
+    if (!/^[0-9a-f]{12}$/i.test(code.trim())) return {ok:false,reason:"请输入完整的12位配对码"};
+    if (!Sync.enabled && !(await syncInit())) throw new Error(Sync.lastError || "同步服务尚未配置");
+    guard();
+    const result = await syncRpc("six_join_room", {p_code:code.trim().toUpperCase()});
+    guard();
+    await syncStartRoom(result.room, false);
+    guard();
+    return {ok:true};
+  });
+}
 async function syncDisconnect() {
-  if (Sync._pollTimer) { clearInterval(Sync._pollTimer); Sync._pollTimer = null; }
-  if (Sync._retryTimer) { clearTimeout(Sync._retryTimer); Sync._retryTimer = null; }
-  try { if (Sync._channel) Sync.client.removeChannel(Sync._channel); } catch (e) {}
-  Sync._channel = null;
-  Sync._listening = false;
-  Sync.paired = false;
-  Sync.room = null;
-  Sync._members = null;
+  Sync._controlVersion++;
+  syncStop(); Sync.room = null; Sync.paired = false; Sync.pairingCode = null; Sync.members = 0;
+  syncRemember({room:null,pairCode:null,pendingCreate:null});
   syncSetState("off");
-  // 清除持久化的配对状态（刷新后不再自动重连）
-  try {
-    const saved = localStorage.getItem("sixthings:sync");
-    if (saved) {
-      const c = JSON.parse(saved);
-      delete c.pairCode;
-      delete c.room;
-      localStorage.setItem("sixthings:sync", JSON.stringify(c));
-    }
-  } catch (e) {}
 }
-
-/* ---------------- 配置设置（用户填 URL/key 后调用） ---------------- */
-function syncConfigure(url, anonKey) {
-  SYNC_CONFIG.url = url;
-  SYNC_CONFIG.anonKey = anonKey;
-  // 持久化配置（下次自动连）
-  try { localStorage.setItem("sixthings:sync", JSON.stringify({ url, anonKey })); } catch (e) {}
-  return syncInit();
-}
-
-// 启动时尝试从持久化配置自动连接
 async function syncAutoInit() {
-  let savedCode = null;
+  const version = Sync._controlVersion;
   try {
-    const saved = localStorage.getItem("sixthings:sync");
-    if (saved) {
-      const c = JSON.parse(saved);
-      if (c.url && c.anonKey) { SYNC_CONFIG.url = c.url; SYNC_CONFIG.anonKey = c.anonKey; }
-      if (c.pairCode) savedCode = c.pairCode; // 恢复上次配对
+    const saved = syncSettings();
+    // Restore pending edits before boot/render, including after an offline reload.
+    if (saved.protocol === 3 && saved.room) {
+      Sync.room = saved.room; Sync.paired = true;
+      syncMakeEngine(saved.room, true);
     }
-  } catch (e) {}
-  const ok = await syncInit();
-  if (ok && savedCode && !Sync.paired) {
-    // 刷新后：自动重新加入上次的房间
-    await syncStartRoom(savedCode);
-  }
-  return ok;
+    if (!(await syncInit())) return false;
+    if (version !== Sync._controlVersion) return false;
+    if (saved.protocol === 3 && saved.room) return syncStartRoom(saved.room);
+    if (saved.room || saved.pairCode) {
+      const result = await syncRpc("six_migrate_legacy", {p_legacy_room:saved.room || "room-" + saved.pairCode});
+      if (version !== Sync._controlVersion) return false;
+      return syncStartRoom(result.room, false);
+    }
+    syncSetState("off"); return true;
+  } catch (error) { syncSetState("error", error); return false; }
 }
+Object.assign(Sync, {syncInit,syncCreatePairing,syncJoinPairing,syncDisconnect,syncAutoInit,
+  syncPush,syncPull:syncFlush,syncStartRoom,syncCapture});
+window.addEventListener("online", async () => {
+  try {
+    if (!Sync.enabled && !(await syncInit())) return;
+    if (!Sync.room) { syncSetState("off"); return; }
+    if (!Sync._pollTimer) await syncStartRoom(Sync.room);
+    else syncPush(0);
+  } catch (error) { syncSetState("error", error); }
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncPush(0); });
 
-/* ---------------- 二维码辅助 ---------------- */
-// 电脑端：在指定容器渲染二维码（内容=配对码）
 function syncRenderQR(containerEl, code) {
   try {
     if (!window.QRCode || !containerEl) return false;
@@ -414,16 +260,5 @@ function syncStartScanner(videoEl, onFound) {
   } catch (e) { return { ok: false, reason: e.message }; }
 }
 
-/* ---------------- 暴露到 Sync 对象（供 app.js 调用） ---------------- */
-Sync.syncInit = syncInit;
-Sync.syncCreatePairing = syncCreatePairing;
-Sync.syncJoinPairing = syncJoinPairing;
-Sync.syncDisconnect = syncDisconnect;
-Sync.syncAutoInit = syncAutoInit;
-Sync.syncPush = syncPush;
-Sync.syncPull = syncPull;
-Sync.syncRenderQR = syncRenderQR;
-Sync.syncStartScanner = syncStartScanner;
-Sync.syncStartRoom = syncStartRoom;
-Sync.syncListenPairing = syncListenPairing;
-Sync.syncDeviceId = syncDeviceId;
+
+Object.assign(Sync, {syncRenderQR, syncStartScanner});

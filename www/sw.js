@@ -1,7 +1,7 @@
 /* Service Worker：离线缓存 + stale-while-revalidate（先回缓存，后台更新，保证发版后能拿到新版） */
-const CACHE = "sixthings-v22";
+const CACHE = "sixthings-v3-20260915b";
 const ASSETS = [
-  "./", "./index.html", "./styles.css", "./app.js", "./sync.js",
+  "./", "./index.html", "./styles.css?v=20260915b", "./app.js?v=20260915b", "./sync.js?v=20260915b", "./sync-engine.js?v=20260915b", "./config.js",
   "./manifest.webmanifest",
   "./vendor/supabase.umd.js", "./vendor/qrcode.min.js", "./vendor/jsqr.js",
   "./icons/icon-192.png", "./icons/icon-512.png"
@@ -31,7 +31,7 @@ self.addEventListener("fetch", (e) => {
   const key = url.href;
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      if (isNav) {
+      if (isNav || url.pathname.endsWith("/config.js")) {
         // 页面导航（index.html / /）：network-first —— 优先拿最新页面，
         // 否则 SW 缓存住旧 index.html，导致发版后用户永远加载旧版本引用。
         const network = fetch(e.request)
@@ -39,7 +39,7 @@ self.addEventListener("fetch", (e) => {
             if (res && res.ok) cache.put(key, res.clone());
             return res;
           })
-          .catch(() => cache.match(key));
+          .catch(async () => (await cache.match(key)) || (isNav ? cache.match("./index.html") : undefined));
         return network;
       }
       // 静态资源：cache-first + 后台更新（stale-while-revalidate）

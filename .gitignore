@@ -1,36 +1,18 @@
 # ---- 依赖 ----
 node_modules/
 
-# ---- Android 构建产物 / Gradle 缓存 ----
-android/.gradle/
-android/.gradle-home/
-android/build/
-android/app/build/
-android/local.properties
-android/capacitor-cordova-android-plugins/
-android/**/*.iml
-android/.idea/
-*.keystore
-keystore.properties
-!android/app/debug.keystore
-
+# ---- 已移除的原生工程，不再加入 Web/PWA 仓库 ----
+/android/
+/ios/
+/capacitor.config.*
+capacitor-cordova-android-plugins/
 .pods-home/
+*.apk
+*.aab
+*.ipa
 
 # ---- 素材/中间产物 ----
 reel_extract/
-
-# ---- iOS ----
-ios/App/App/public/
-ios/App/Pods/
-ios/App/App.xcworkspace/xcuserdata/
-ios/App/App.xcodeproj/xcuserdata/
-ios/**/xcuserdata/
-ios/build/
-DerivedData/
-*.xcuserstate
-
-# ---- Capacitor ----
-capacitor-cordova-android-plugins/
 *.map
 
 # ---- 构建/日志 ----
@@ -49,11 +31,23 @@ Thumbs.db
 # ---- 环境/密钥 ----
 .env
 .env.local
+.env.*
+!.env.example
 *.pem
+*.p8
+*.p12
+*.keystore
+*.mobileprovision
+keystore.properties
 secrets/
+.vercel/
+.wrangler/
 
 # Cloudflare 部署脚本（含 API key，勿提交）
 deploy-cf.sh
 
 # 发布脚本（部署凭据细节，不提交）
 release.sh
+
+# Local archives; may contain signing keys and deployment credentials.
+local-backups/

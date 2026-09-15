@@ -1,90 +1,59 @@
 # 六件事 · Six Things
 
-> **一个价值 25,000 美金的待办方法** —— 1918 年 Ivy Lee 靠这套方法让美国钢铁公司老板 Charles Schwab 心甘情愿付了这笔巨款。
+践行 Ivy Lee 法的 Web/PWA 清单：提前规划、按顺序执行、未完成顺延。电脑、安卓手机、iPhone 和平板使用同一个网站，可添加到主屏幕并离线使用。
 
-**六件事**（Six Things）是一款严格践行 **Ivy Lee 法（六件事法）** 的待办 App：睡前列 6 件最重要的事、按重要排序、白天只做第一件、做不完顺延到明天。没有复杂的项目、标签、分类——只有**最纯粹的执行**。
+## 本地运行
 
----
+需要 Node.js 22 或更新版本，无需 Android SDK、Xcode 或 npm 运行时依赖。
 
-## 🚀 第二部分：软件介绍
+```sh
+npm run serve
+```
 
-### 这是什么
+打开 `http://localhost:8080`。未配置同步服务时，清单保存在当前浏览器的 localStorage 与 IndexedDB；可在设置中导出 JSON 备份。系统提醒目前只在页面运行时检查，不包含关闭页面后的 Web Push。
 
-一款极简、严格按 Ivy Lee 法执行的**每日清单 App**。核心循环：
+## 开启多设备同步
 
-`晚间规划 → 白天按序执行 → 晚间收尾（顺延）→ 坚持记录`
+1. 在自己的 Supabase 项目中启用匿名登录。
+2. 执行 [v3 数据库脚本](docs/supabase-schema-v3.sql)。新项目直接执行；已有 v2 项目也执行同一脚本。
+3. 复制 `.env.example` 为 `.env.local`，填入 Project URL 和 publishable/anon key。不要填写 service-role key。
+4. 重启本地服务，或重新构建并部署。
+5. 一台设备打开设置生成配对码，其他设备输入或扫码加入；添加第三台设备时生成一个新码。
 
-### 核心功能
+配对码为 12 位，10 分钟有效，一次性使用。发起端立即进入共享空间；实时通知不可用时仍会轮询。离线修改会连同同步进度保存在本机，联网后自动重试。
 
-| 功能 | 说明 |
+### 冲突约定
+
+- 不同任务、不同字段的修改尽量合并。
+- 删除优先于同一任务的离线编辑，避免已删除内容复活。
+- 同一字段同时修改，以后成功提交的值为准，不依赖设备时钟。
+- 「清空所有数据」也会清空共享内容；系统通知许可与通知记录仅属于本机。
+
+## 检查与构建
+
+```sh
+npm run check    # JavaScript 语法、静态资源及版本一致性
+npm test         # 同步状态、离线重试与应用接口回归
+npm run test:db  # 独立 PostgreSQL 事务与权限测试；需安装 PostgreSQL 工具
+npm run build   # 生成 dist/，仅将此目录部署为网站
+```
+
+`test:db` 自动创建临时数据库并在结束后关闭、清理，不连接现有数据库。测试方案及验证范围见 [同步方案](docs/同步方案与验证.md)。
+
+## 目录
+
+| 路径 | 用途 |
 |---|---|
-| **今日清单** | 睡前列 6 件（可调 3~6 件）最重要的事，按重要性排序 |
-| **顺序锁定** | 默认第 1 件做完前不能碰别的；可开「允许跳过」 |
-| **一键机会** | 今日清单定型后，仍可把新规划作为今日任务执行一次 |
-| **收件箱** | 突发事项先扔进收件箱，不打断主清单顺序 |
-| **顺延** | 未完成任务一键滚到明天，重新排序 |
-| **坚持日历** | 月历展示每天完成状态，点击任意日期查看当天全部历史任务 |
-| **多端实时同步** | 电脑/手机实时一致，扫码配对即可，无需导出导入 |
-| **数据备份** | localStorage + IndexedDB 双写自动备份，可导出/导入 JSON 文件 |
-| **提醒** | 晚间规划提醒 + 早晨「今天的第一件事」推送 |
-| **PWA** | 添加到主屏幕即像原生 App，可离线使用 |
+| `www/` | 页面、样式、业务逻辑、PWA 缓存、图标与浏览器库 |
+| `www/sync-engine.js` | 独立的合并与持久化重试模块 |
+| `www/sync.js` | Supabase 身份、配对、轮询与同步连接 |
+| `tests/`、`scripts/` | 回归测试、本地运行、构建工具 |
+| `docs/` | 数据库脚本、发布说明、同步设计与方法介绍 |
 
-### 平台
+Android/iOS 工程不再参与构建；历史源码仍可从 Git 历史恢复。本机原生备份及发布凭据不属于仓库内容。
 
-| 平台 | 形态 | 状态 |
-|---|---|---|
-| **Web / PWA** | 纯静态，浏览器打开即用 | ✅ 可用 |
-| **Android** | Capacitor 打包 APK | ✅ 可用（debug 版） |
-| **iOS** | Capacitor 打包 Xcode 工程 | ⚙️ 需 Xcode 编译 |
+## 发布与许可
 
-### 快速开始
+部署步骤见 [部署与发布](docs/部署与发布.md)。公开仓库不等于开放线上数据库访问：每个自部署实例应使用自己的后端配置。
 
-#### Web / PWA（最快）
-```bash
-# 本地预览
-python3 -m http.server 8080 --directory www
-# 打开 http://localhost:8080
-```
-部署到任意静态托管（Vercel / Netlify / GitHub Pages）即可公网使用。
-
-#### Android
-```bash
-npm run android:build          # 构建 debug APK
-# 产物：android/app/build/outputs/apk/debug/app-debug.apk
-```
-正式发布请改用 **release 签名**（见《部署与发布指南》）。
-
-#### 多端实时同步（可选）
-需要 Supabase 项目，配置一次即可（详见 [docs/部署与发布.md](docs/部署与发布.md)）：
-1. Supabase 开启**匿名登录**
-2. 运行 [docs/supabase-schema-v2.sql](docs/supabase-schema-v2.sql) 建表 + RLS
-3. 将表加入 realtime publication
-4. 把 Project URL / publishable key 填入 [www/sync.js](www/sync.js)
-
-### 技术栈
-
-- **Web**：纯 HTML / CSS / 原生 JS，零框架，零运行时依赖
-- **持久化**：localStorage（主）+ IndexedDB（自动备份）
-- **同步**：Supabase Realtime（WebSocket 实时推送，RLS 行级数据隔离，匿名登录，无需用户注册）
-- **配对**：8 位一次性配对码 + 二维码（扫码自动加入）
-- **打包**：Capacitor 7（Android / iOS）
-- **PWA**：Service Worker 离线缓存
-
-### 目录结构
-
-```
-www/                  # Web 应用（单一逻辑源，三端共用）
-  app.js              # 核心逻辑
-  sync.js             # 多端同步模块
-  styles.css          # 样式
-  index.html          # 入口
-  vendor/             # 本地化第三方库（supabase、qrcode、jsQR）
-android/              # Android 工程（Capacitor）
-ios/                  # iOS 工程（Capacitor）
-docs/                 # 文档（方法、部署、测试环境、Supabase SQL）
-scripts/              # 工具脚本
-```
-
-### 许可证
-
-保留所有权利（私有项目，未授权请勿分发）。
+本项目的开源许可证尚待维护者确定；第三方库及其许可证见 [第三方声明](www/vendor/README.md)。
