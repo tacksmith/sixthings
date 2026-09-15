@@ -1,7 +1,7 @@
 /* Service Worker：离线缓存 + stale-while-revalidate（先回缓存，后台更新，保证发版后能拿到新版） */
-const CACHE = "sixthings-v3-20260915b";
+const CACHE = "sixthings-v3-20260915c";
 const ASSETS = [
-  "./", "./index.html", "./styles.css?v=20260915b", "./app.js?v=20260915b", "./sync.js?v=20260915b", "./sync-engine.js?v=20260915b", "./config.js",
+  "./", "./index.html", "./styles.css?v=20260915c", "./app.js?v=20260915c", "./sync.js?v=20260915c", "./sync-engine.js?v=20260915c", "./config.js",
   "./manifest.webmanifest",
   "./vendor/supabase.umd.js", "./vendor/qrcode.min.js", "./vendor/jsqr.js",
   "./icons/icon-192.png", "./icons/icon-512.png"

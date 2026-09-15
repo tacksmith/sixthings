@@ -2,6 +2,7 @@
   "name": "sixthings",
   "version": "1.0.0",
   "description": "六件事 · Six Things — Ivy Lee 法 Web/PWA 清单",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "serve": "node scripts/serve.mjs",
